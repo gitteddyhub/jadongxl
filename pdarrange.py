@@ -6,3 +6,14 @@
 # data = dataframe.iloc[index_number].to_list()
 # 리스트에서 값 추출
 # data[0]
+
+# dataframe 만들기
+# dates = pd.date_range('20130101', periods=6)
+# df = pd.DataFrame(np.random.randn(6,4), index=dates, columns=list('ABCD'))
+
+
+# 컬럼 열번호 가져오기
+#df2.columns.get_loc('E')
+
+# 컬럼 행번호 가져오기
+#df2.index.get_loc('2013-01-01')
