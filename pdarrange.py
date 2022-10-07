@@ -38,6 +38,9 @@
 # df.loc[:, ['A']]
 # df.loc[:, ['A', 'B']]
 
+# adjustable range : 작동 지점을 설정할 수 있는 범위 (주로 Switch 에서 필요한 항목 같음)
+
+
 
 
 
