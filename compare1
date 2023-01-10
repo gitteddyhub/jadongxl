@@ -1,0 +1,176 @@
+import pandas as pd
+import numpy as np
+import openpyxl
+import xlsxwriter
+
+from math import floor, log10
+
+df_pd_r0_origin = pd.read_excel('PD_INS_221007.xlsx')
+
+df_pd_r0 = df_pd_r0_origin.fillna('-')
+df_pd_r0 = df_pd_r0.drop(index = df_pd_r0[df_pd_r0['TagNo'] == '-'].index)
+
+df_pd_r1_origin = pd.read_excel('PD_INS_221010.xlsx')
+
+df_pd_r1 = df_pd_r1_origin.fillna('-')
+df_pd_r1 = df_pd_r1.drop(index = df_pd_r1[df_pd_r1['TagNo'] == '-'].index)
+
+
+global flowSig
+flowSig = 3
+
+def roundFlow(x):
+    if type(x) is float:
+        if x >= 100:
+            x = round(x, flowSig - int(floor(log10(abs(x)))) - 1)
+            x = int(x)
+            return x
+        elif 100 > x >= 0.1:
+            x = round(x + 10**(-len(str(x))-1), 1)
+            return x
+        else:
+            x = round(x + 10**(-len(str(x))-1), 3)
+            return x
+
+    elif type(x) is int:
+        if x >= 100:
+            x = round(x, flowSig - int(floor(log10(abs(x)))) - 1)
+            return x
+        else:
+            return x
+    else:
+        return x
+
+
+df_pd_r0['FlowMax'] = df_pd_r0['FlowMax'].apply(lambda x: roundFlow(x))
+df_pd_r0['FlowNor'] = df_pd_r0['FlowNor'].apply(lambda x: roundFlow(x))
+df_pd_r0['FlowMin'] = df_pd_r0['FlowMin'].apply(lambda x: roundFlow(x))
+
+df_pd_r1['FlowMax'] = df_pd_r1['FlowMax'].apply(lambda x: roundFlow(x))
+df_pd_r1['FlowNor'] = df_pd_r1['FlowNor'].apply(lambda x: roundFlow(x))
+df_pd_r1['FlowMin'] = df_pd_r1['FlowMin'].apply(lambda x: roundFlow(x))
+
+global revNo
+revNo = 0
+
+df_pd_r0['Rev'] = 0
+df_pd_r1['Rev'] = 1
+
+
+tag_dropped = set(df_pd_r0['TagNo']) - set(df_pd_r1['TagNo'])
+tag_added = set(df_pd_r1['TagNo']) - set(df_pd_r0['TagNo'])
+
+# print('삭제된 아이템: ', tag_dropped)
+# print('추가된 아이템: ', tag_added)
+
+df_dropped = df_pd_r0[df_pd_r0['TagNo'].isin(tag_dropped)].iloc[:,:]
+df_added = df_pd_r1[df_pd_r1['TagNo'].isin(tag_added)].iloc[:,:]
+
+
+
+df_concatenated = pd.concat([df_pd_r0, df_pd_r1], ignore_index=True)
+
+changes = df_concatenated.drop_duplicates(df_concatenated.columns[2:], keep='last')
+
+# print(changes)
+duplicated_list = changes[changes['TagNo'].duplicated()]['TagNo'].to_list()
+df_changes = changes[changes['TagNo'].isin(duplicated_list)]
+# print(duplicated_list)
+# print(df_changes)
+
+# 맨 뒤의 iloc 은 맨끝이나 맨 앞쪽부터 비교시 분리해야할 컬럼을 위해 사용함. 전체를 나타내도 무방할 경우 삭제.
+df_changes_r0 = df_changes[df_changes['Rev'] == 0].iloc[:,:]
+df_changes_r0 = df_changes_r0.sort_values(by='TagNo')
+# print(df_changes_r0)
+
+## df_changes_r0.sort_values(by='TagNo' , inplace = True) 참조한 사이트의 명령문으로 SettingWithCopyWarning 이 뜸
+
+
+
+## 아랫줄 df0 가 쓰이는데가 없다;;
+# df0 = df_changes_r0.sort_values(by='TagNo', ascending=False)
+
+# Todo : 하나의 Process Data 내에서 중복인 경우 처리
+df_changes_r1 = df_changes[df_changes['Rev'] == 1].iloc[:,:]
+df_changes_r1 = df_changes_r1.sort_values(by='TagNo')
+#
+#
+# df_info_changed = df_changes_r0.copy()
+# for i in range(len(df_changes_r1.index)):
+#     for j in range(len(df_changes_r1.columns)):
+#         if (df_changes_r1.iloc[i, j] != df_changes_r0.iloc[i, j]):
+#             df_info_changed.iloc[i, j] = str(df_changes_r0.iloc[i, j]) + "==>" + str(df_changes_r1.iloc[i,j])
+
+changedItemList = []
+
+df_info_changed = df_changes_r0.copy()
+for i in range(len(df_changes_r1.index)):
+    for j in range(len(df_changes_r1.columns)):
+        if (df_changes_r1.iloc[i, j] != df_changes_r0.iloc[i, j]):
+            changedItemList.append([i,j])
+            print(i, j)
+            # print(df_changes_r1['TagNo'])
+            print(df_changes_r0.iloc[i, 2])
+            print(df_changes_r1.columns[j])
+            df_info_changed.iloc[i, j] = str(df_changes_r0.iloc[i, j]) + " => " + str(df_changes_r1.iloc[i,j])
+            print(df_changes_r1.iloc[i,j])
+
+
+
+
+print(changedItemList)
+
+
+#
+# with pd.ExcelWriter('campare3.xlsx') as writer:
+#     df_info_changed.to_excel(writer, sheet_name='infor_changed', index = False)
+#     df_added.to_excel(writer, sheet_name='added', index = False)
+#     df_dropped.to_excel(writer, sheet_name='dropped', index = False)
+
+
+# Excel 출력
+# writer = pd.ExcelWriter("compare4.xlsx", engine="xlsxwriter")
+# df_info_changed.to_excel(writer, sheet_name='infor changed', index=False)
+# df_added.to_excel(writer, sheet_name='added', index=False)
+# df_dropped.to_excel(writer, sheet_name='dropped', index=False)
+#
+# workbook = writer.book
+# worksheet1 = writer.sheets['infor changed']
+#
+# header_format = workbook.add_format({'bold': True, 'text_wrap': True, 'valign': 'vcenter', 'fg_color': '#93cddd', 'border': 1})
+#
+# for col_num, val in enumerate(df_info_changed.columns.values):
+#     print(col_num, val)
+#     worksheet1.write(0,col_num, val, header_format)
+#
+#
+#
+# writer.close()
+
+#####
+import pandas as pd
+import numpy as np
+
+
+df1 = pd.DataFrame({
+    'TagNo': ['FT-001', 'FT-002', 'FT-003', 'FT-004', 'FT-005', 'FT-006'],
+    'fruits': ['apple', 'orange', 'banana', 'celery', 'apple', 'banana'],
+    'price': [100, 100, 200, 300, 200, 200],
+    'color': ['Red', 'Orange', 'Yellow', 'Green', 'Red', 'Yellow']
+})
+
+df2 = pd.DataFrame({
+    'TagNo': ['FT-001', 'FT-002', 'FT-003', 'FT-005', 'FT-007'],
+    'fruits': ['apple', 'orange', 'banana', 'apple', 'apple'],
+    'price': [100, 100, 400, 200, 200],
+    'color': ['Red', 'Orange', 'Yellow', 'Red', 'Yellow']
+})
+
+tag_dropped = set(df1['TagNo']) - set(df2['TagNo'])
+
+tag_added = set(df2['TagNo']) - set(df1['TagNo'])
+
+df_con = pd.concat([df1, df2], ignore_index=True)
+
+changes = df_con.drop_duplicates(df_con.columns[0:], keep='last')
+
