@@ -1,0 +1,240 @@
+import pandas as pd
+import numpy as np
+# import openpyxl
+import xlsxwriter
+import time
+
+start = time.time()
+
+
+from math import floor, log10
+
+dfpd_r0_origin = pd.read_excel('AVEVA_Mass_R1.xlsx', dtype = 'object')
+
+# Todo : Sheet 별로도 작성
+# xl = pd.ExcelFile('PD_INS_221007.xlsx')
+# sh_name = xl.sheet_names
+# print(sh_name)
+
+# Todo: Data Sheet 에 작성 기준 Process Data 를 명기하면 좋겠음
+
+dfpd_r0 = dfpd_r0_origin.copy()
+dfpd_r0.loc[99999] = '-'
+dfpd_r0 = dfpd_r0.fillna('-')
+dfpd_r0 = dfpd_r0.drop(index = dfpd_r0[dfpd_r0['TagNo'] == '-'].index)
+
+dfpd_r1_origin = pd.read_excel('AVEVA_Mass_R2.xlsx', dtype = 'object')
+
+dfpd_r1 = dfpd_r1_origin.copy()
+dfpd_r1.loc[99999] = '-'
+dfpd_r1 = dfpd_r1.fillna('-')
+dfpd_r1 = dfpd_r1.drop(index = dfpd_r1[dfpd_r1['TagNo'] == '-'].index)
+
+
+global flowSig
+flowSig = 3
+
+def roundFlow(x):
+    if type(x) is float:
+        if x >= 100:
+            x = round(x, flowSig - int(floor(log10(abs(x)))) - 1)
+            x = int(x)
+            return x
+        elif 100 > x >= 0.1:
+            x = round(x + 10**(-len(str(x))-1), 1)
+            return x
+        else:
+            x = round(x + 10**(-len(str(x))-1), 3)
+            return x
+
+    elif type(x) is int:
+        if x >= 100:
+            x = round(x, flowSig - int(floor(log10(abs(x)))) - 1)
+            return x
+        else:
+            return x
+    else:
+        return x
+
+try:
+    dfpd_r0['FlowMax'] = dfpd_r0['FlowMax'].apply(lambda x: roundFlow(x))
+    dfpd_r0['FlowNormal'] = dfpd_r0['FlowNormal'].apply(lambda x: roundFlow(x))
+    dfpd_r0['FlowMin'] = dfpd_r0['FlowMin'].apply(lambda x: roundFlow(x))
+
+    dfpd_r1['FlowMax'] = dfpd_r1['FlowMax'].apply(lambda x: roundFlow(x))
+    dfpd_r1['FlowNormal'] = dfpd_r1['FlowNormal'].apply(lambda x: roundFlow(x))
+    dfpd_r1['FlowMin'] = dfpd_r1['FlowMin'].apply(lambda x: roundFlow(x))
+except:
+    print("No Column Name")
+    pass
+
+
+global revNo
+revNo = 0
+
+dfpd_r0['RevCon'] = 1
+dfpd_r1['RevCon'] = 2
+
+
+# Tag 기반 추가/삭제 아이템
+## 이게되네;; Status 열에서 FT-002 인 열의 TagNo
+## tag = set(df2[df2['Status'] == 'FT-002']['TagNo'])
+
+
+tag_dropped = set(dfpd_r0['TagNo']) - set(dfpd_r1['TagNo'])
+tag_added = set(dfpd_r1['TagNo']) - set(dfpd_r0['TagNo'])
+
+print('삭제된 아이템: ', tag_dropped)
+print('추가된 아이템: ', tag_added)
+
+df_dropped = dfpd_r0[dfpd_r0['TagNo'].isin(tag_dropped)].iloc[:,:-1]
+df_added = dfpd_r1[dfpd_r1['TagNo'].isin(tag_added)].iloc[:,:-1]
+
+### 판다스 조건///
+### df[df['age']>40, 'generation'] = '장년'
+
+
+# Deleted 열중에 deleted 를 포함하는 DF, 이칸에 el 혹은 EL 로 되는 Tag 가 있으면 낭패
+# contains 사용 시 Nan 값이 있으면 에러남
+df_drop_del_r0 = dfpd_r0[dfpd_r0['Deleted'].str.contains('el|EL')].iloc[:,:-1]
+df_drop_del_r1 = dfpd_r1[dfpd_r1['Deleted'].str.contains('el|EL')].iloc[:,:-1]
+
+tag_del = set(df_drop_del_r1['TagNo']) - set(df_drop_del_r0['TagNo'])
+df_del = dfpd_r1[dfpd_r1['TagNo'].isin(tag_del)].iloc[:,:-1]
+
+df_drop_total = pd.concat([df_dropped, df_del], ignore_index=True)
+
+
+df_concatenated = pd.concat([dfpd_r0, dfpd_r1], ignore_index=True)
+
+changes = df_concatenated.drop_duplicates(df_concatenated.columns[2:-1], keep='last')
+
+
+duplicated_list = changes[changes['TagNo'].duplicated()]['TagNo'].to_list()
+df_changes = changes[changes['TagNo'].isin(duplicated_list)]
+
+# print(duplicated_list)
+# print(df_changes)
+
+# 맨 뒤의 iloc 은 맨끝이나 맨 앞쪽부터 비교시 분리해야할 컬럼을 위해 사용함. 전체를 나타내도 무방할 경우 삭제.
+df_changes_r0 = df_changes[df_changes['RevCon'] == 1].iloc[:,:-1]
+df_changes_r0 = df_changes_r0.sort_values(by='TagNo')
+# print(df_changes_r0)
+
+## df_changes_r0.sort_values(by='TagNo' , inplace = True) 참조한 사이트의 명령문으로 SettingWithCopyWarning 이 뜸
+
+
+
+## 아랫줄 df0 가 쓰이는데가 없다;;
+# df0 = df_changes_r0.sort_values(by='TagNo', ascending=False)
+
+# Todo : 하나의 Process Data 내에서 중복인 경우 처리
+df_changes_r1 = df_changes[df_changes['RevCon'] == 2].iloc[:,:-1]
+df_changes_r1 = df_changes_r1.sort_values(by='TagNo')
+# print('추우우우울력 :', df_changes_r1)
+# print(df_changes_r0.iat[21, 12])
+
+
+
+# df_info_changed = df_changes_r0.copy()
+# for i in range(len(df_changes_r1.index)):
+#     for j in range(len(df_changes_r1.columns)):
+#         if (df_changes_r1.iloc[i, j] != df_changes_r0.iloc[i, j]):
+#             df_info_changed.iloc[i, j] = str(df_changes_r0.iloc[i, j]) + "==>" + str(df_changes_r1.iloc[i,j])
+
+changedItemList = []
+changedItem=[]
+colorItem=[]
+
+df2_c = dfpd_r1.iloc[:,:-1]
+df2_ci = dfpd_r1.iloc[:,:-1]
+
+# df2_c = dfpd_r1.copy()
+# df2_ci = dfpd_r1.copy()
+
+# Todo 변경된 것이 없을 경우 처리 방법 구현해야함
+
+df_info_changed = df_changes_r1.copy()
+
+for i in range(len(df_changes_r1.index)):
+    for j in range(len(df_changes_r1.columns)):
+        if (df_changes_r1.iat[i, j] != df_changes_r0.iat[i, j]):
+            # changedItemList.append([i,j])
+            df_info_changed.iat[i, j] = str(df_changes_r0.iat[i, j]) + " => " + str(df_changes_r1.iat[i,j])
+            # print('변경 :', df_info_changed.iat[i, j])
+            df2_index = df2_ci.index[df2_ci['TagNo'] == df_changes_r1.iat[i, 3]].tolist()
+            # print(df2_index)
+
+            changedItemList.append([i, j, df_info_changed.iat[i, j]])
+            changedItem.append([df2_index[0], j, df_info_changed.iat[i, j]])
+            colorItem.append([df2_index[0], j, df2_c.iat[df2_index[0], j]])
+
+
+
+df_info_changed.loc[99999] = ""
+df_added.loc[99999] = ""
+
+df_info_changed = pd.concat([df_info_changed, df_added, df_drop_total])
+
+
+
+print("변경시트: ", changedItemList)
+
+#
+# with pd.ExcelWriter('campare3.xlsx') as writer:
+#     df_info_changed.to_excel(writer, sheet_name='infor_changed', index = False)
+#     df_added.to_excel(writer, sheet_name='added', index = False)
+#     df_dropped.to_excel(writer, sheet_name='dropped', index = False)
+
+
+# Excel 출력
+writer = pd.ExcelWriter("compare2.xlsx", engine="xlsxwriter")
+df2_ci.to_excel(writer, sheet_name='df2_ci', index=False)
+df2_c.to_excel(writer, sheet_name='df2_c', index=False)
+df_info_changed.to_excel(writer, sheet_name='infor_changed', index=False)
+# df_added.to_excel(writer, sheet_name='added', index=False)
+# df_drop_total.to_excel(writer, sheet_name='dropped', index=False)
+
+workbook = writer.book
+worksheet1 = writer.sheets['infor_changed']
+worksheet2 = writer.sheets['df2_ci']
+worksheet3 = writer.sheets['df2_c']
+
+
+# cell_format = workbook.add_format({'bold': True, 'text_wrap': True, 'valign': 'vcenter', 'fg_color': 'yellow', 'border': 1})
+
+cell_format = workbook.add_format({'bold': True, 'valign': 'vcenter', 'fg_color': 'yellow', 'border': 1})
+gen_format = workbook.add_format({'border': 1})
+
+# worksheet2.conditional_format('A1:A20', {'type' : 'no_blanks', 'format' : gen_format})
+
+worksheet1.set_column(0, df_info_changed.shape[1]-1, None ,gen_format)
+worksheet2.set_column(0, df2_ci.shape[1]-1, None ,gen_format)
+worksheet3.set_column(0, df2_c.shape[1]-1, None ,gen_format)
+
+for col_num, val in enumerate(df_info_changed.columns.values):
+    worksheet1.write(0,col_num, val, cell_format)
+
+for col_num, val in enumerate(df2_ci.columns.values):
+    worksheet2.write(0,col_num, val, cell_format)
+
+for col_num, val in enumerate(df2_c.columns.values):
+    worksheet3.write(0,col_num, val, cell_format)
+
+
+for i, j, v in changedItemList:
+    worksheet1.write(i+1, j, v, cell_format)
+
+for i , j, v in changedItem:
+    worksheet2.write(i+1, j, v, cell_format)
+
+for i, j, v in colorItem:
+    worksheet3.write(i + 1, j, v, cell_format)
+
+
+writer.close()
+
+end = time.time()
+
+print(f"{end - start:.5f} sec")
+
