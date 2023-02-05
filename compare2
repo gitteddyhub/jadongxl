@@ -4,26 +4,85 @@ import numpy as np
 import xlsxwriter
 import time
 
-start = time.time()
+start1 = time.time()
+
+
+"""
+(df3 는 inst. list, df4 는 piping_summary)
+Vlookup 은 merge 로 수행하며, merge 시 컬럼명이 같으면 추가 해야 할 행만 추가 가능하다.
+df5 = df3.merge(df4[['LINE CLASS', 'RATING']], how = 'left', on = 'LINE CLASS')
+컬럼명이 다를 경우 left_on, right_on 으로 해당 컬럼명을 지정하면 되나,
+비교기준이 되는 열이 추가된다.
+df5 = df3.merge(df4[['LINE CLASS','RATING']], how = 'left', left_on = 'LineClass', right_on='LINE CLASS')
+"""
+
+"""
+excel 상 Index(match(match)) 로 구성되는, LINE CLASS 와 lINE SIZE 로 PIPE SCHEDULE 을 지정하는 것은, unstack 을 사용한다.
+piping_summary 를 unstack 하면서, schedule 값을 to_frame("블라블라") 으로 지정해주면, 블라블라가 스케줄값의 열이름이 된다.
+예제 실행 시
+piping_summary 가 이중인덱스를 가지게 되고, 그 인덱스와 Inst. List 의 LineSize 와 Line Class 중 일치하는 값(스케줄값)을 찾아
+해당 열을 추가해준다. (Inst. List 에 Sch 열이 있다면, 그 것과 별도의 Sch_y 같은 열로 추가된다.)
+
+df6 = df3.merge(df4.set_index("LINE CLASS").unstack().to_frame("Sch"), left_on=["LineSize", "LINE CLASS"], right_index=True)
+
+"""
+
+# Pipe Pressure Temperature Rating Table 및 보간법을 통한 Rating 적정성 확인
+# TODO : 아래 out 값으로 받은 array 값을 상수로 활용하는 방안
+'''
+import pandas as pd
+import numpy as np
+from scipy.interpolate import griddata
+df = pd.read_excel('D:/InstData/sample3.xlsx', index_col=0)
+'''
+
+'''
+        0.1     0.2     0.3     0.4     0.5
+0.1    4.01   31.86   68.01  103.93  139.20
+0.2   24.07   57.49   91.37  125.21  158.57
+0.3   44.35   76.40  108.97  141.57  173.78
+0.4   59.66   91.02  122.80  154.62  186.13
+0.5   87.15  117.90  148.86  179.83  210.48
+0.6  106.92  137.41  168.26  198.99  229.06
+0.7  121.73  152.48  183.40  213.88  243.33
+'''
+
+'''
+# (index 축) - 범위 바깥이면 nan 값으로 표기됨
+a=0.3
+#(column 축)
+b=0.35
+# Index 와 column 이 배열의 좌표값과 같이 [Index, Column, Value] 의 배열로 만들어짐
+n = df.stack().reset_index().values
+
+out = griddata(n[:,0:2], n[:,2], [(a, b)], method='linear')
+
+'''
+
+
+
+# TODO : Range 지정하기 (5단위 반올림 등)
+
+
 
 
 from math import floor, log10
 
-dfpd_r0_origin = pd.read_excel('AVEVA_Mass_R1.xlsx', dtype = 'object')
+dfpd_r0_origin = pd.read_excel('AVEVA_Mass_R4.xlsx', dtype = 'object')
 
 # Todo : Sheet 별로도 작성
 # xl = pd.ExcelFile('PD_INS_221007.xlsx')
 # sh_name = xl.sheet_names
 # print(sh_name)
 
-# Todo: Data Sheet 에 작성 기준 Process Data 를 명기하면 좋겠음
+# Todo: Data Sheet 에 작성 기준 Process Data 파일 이름을 명기하면 좋겠음
 
 dfpd_r0 = dfpd_r0_origin.copy()
 dfpd_r0.loc[99999] = '-'
 dfpd_r0 = dfpd_r0.fillna('-')
 dfpd_r0 = dfpd_r0.drop(index = dfpd_r0[dfpd_r0['TagNo'] == '-'].index)
 
-dfpd_r1_origin = pd.read_excel('AVEVA_Mass_R2.xlsx', dtype = 'object')
+dfpd_r1_origin = pd.read_excel('AVEVA_Mass_R5.xlsx', dtype = 'object')
 
 dfpd_r1 = dfpd_r1_origin.copy()
 dfpd_r1.loc[99999] = '-'
@@ -34,6 +93,9 @@ dfpd_r1 = dfpd_r1.drop(index = dfpd_r1[dfpd_r1['TagNo'] == '-'].index)
 global flowSig
 flowSig = 3
 
+end1 = time.time()
+
+# TODO : 유효 숫자, 반올림 등 조건 확립(코딩 방법 재확인)
 def roundFlow(x):
     if type(x) is float:
         if x >= 100:
@@ -72,6 +134,7 @@ except:
 global revNo
 revNo = 0
 
+# TODO : 비교할 파일 순으로 Version Control 해야함
 dfpd_r0['RevCon'] = 1
 dfpd_r1['RevCon'] = 2
 
@@ -80,9 +143,19 @@ dfpd_r1['RevCon'] = 2
 ## 이게되네;; Status 열에서 FT-002 인 열의 TagNo
 ## tag = set(df2[df2['Status'] == 'FT-002']['TagNo'])
 
+# TODO : Deleted 열의 Status 에 따른 Tag 확인 부가 복잡하므로 간단하게 정리 필요
+
+df_tag_changed1 = dfpd_r1[~dfpd_r1['Deleted'].str.contains('el|EL|dd|DD')].iloc[:,:-1]
+df_tag_changed2 = df_tag_changed1[df_tag_changed1['Deleted'].str.len() > 5]
+pre_tag = set(df_tag_changed2['Deleted'])
+
+for i in pre_tag:
+    dfpd_r1.loc[dfpd_r1['Deleted'] == i, 'TagNo'] = i
+
 
 tag_dropped = set(dfpd_r0['TagNo']) - set(dfpd_r1['TagNo'])
 tag_added = set(dfpd_r1['TagNo']) - set(dfpd_r0['TagNo'])
+
 
 print('삭제된 아이템: ', tag_dropped)
 print('추가된 아이템: ', tag_added)
@@ -90,20 +163,22 @@ print('추가된 아이템: ', tag_added)
 df_dropped = dfpd_r0[dfpd_r0['TagNo'].isin(tag_dropped)].iloc[:,:-1]
 df_added = dfpd_r1[dfpd_r1['TagNo'].isin(tag_added)].iloc[:,:-1]
 
+tag_df_added = set(df_added['TagNo'])
+
 ### 판다스 조건///
-### df[df['age']>40, 'generation'] = '장년'
+### df.loc[df['age']>40, 'generation'] = '장년'
 
 
 # Deleted 열중에 deleted 를 포함하는 DF, 이칸에 el 혹은 EL 로 되는 Tag 가 있으면 낭패
 # contains 사용 시 Nan 값이 있으면 에러남
 df_drop_del_r0 = dfpd_r0[dfpd_r0['Deleted'].str.contains('el|EL')].iloc[:,:-1]
 df_drop_del_r1 = dfpd_r1[dfpd_r1['Deleted'].str.contains('el|EL')].iloc[:,:-1]
-
 tag_del = set(df_drop_del_r1['TagNo']) - set(df_drop_del_r0['TagNo'])
+
 df_del = dfpd_r1[dfpd_r1['TagNo'].isin(tag_del)].iloc[:,:-1]
 
 df_drop_total = pd.concat([df_dropped, df_del], ignore_index=True)
-
+tag_df_drop_total = set(df_drop_total['TagNo'])
 
 df_concatenated = pd.concat([dfpd_r0, dfpd_r1], ignore_index=True)
 
@@ -123,7 +198,7 @@ df_changes_r0 = df_changes_r0.sort_values(by='TagNo')
 
 ## df_changes_r0.sort_values(by='TagNo' , inplace = True) 참조한 사이트의 명령문으로 SettingWithCopyWarning 이 뜸
 
-
+end2 = time.time()
 
 ## 아랫줄 df0 가 쓰이는데가 없다;;
 # df0 = df_changes_r0.sort_values(by='TagNo', ascending=False)
@@ -152,6 +227,7 @@ df2_ci = dfpd_r1.iloc[:,:-1]
 # df2_c = dfpd_r1.copy()
 # df2_ci = dfpd_r1.copy()
 
+end3 = time.time()
 # Todo 변경된 것이 없을 경우 처리 방법 구현해야함
 
 df_info_changed = df_changes_r1.copy()
@@ -169,12 +245,32 @@ for i in range(len(df_changes_r1.index)):
             changedItem.append([df2_index[0], j, df_info_changed.iat[i, j]])
             colorItem.append([df2_index[0], j, df2_c.iat[df2_index[0], j]])
 
-
+end4 = time.time()
 
 df_info_changed.loc[99999] = ""
 df_added.loc[99999] = ""
 
+indexNo_df_info_changed = len(df_info_changed.index)
+
 df_info_changed = pd.concat([df_info_changed, df_added, df_drop_total])
+
+indexNo_df_added = len(df_added.index)
+indexNo_df_drop_total = len(df_drop_total.index)
+ind_add = len(df_info_changed.index) + len(df_added.index)
+ind_drop = ind_add + len(df_drop_total.index)
+
+# Add, Delete 에 서식 넣기 전 좌표값 받아오기
+
+tag_df_drop_total_list = []
+tag_df_added_list = []
+
+
+for i in range(len(ind_drop)):
+    for j in range(len(df_info_changed.columns)):
+        pass
+
+
+
 
 
 
@@ -234,7 +330,10 @@ for i, j, v in colorItem:
 
 writer.close()
 
-end = time.time()
+end5 = time.time()
 
-print(f"{end - start:.5f} sec")
-
+print(f"{end1 - start1:.5f} sec")
+print(f"{end2 - start1:.5f} sec")
+print(f"{end3 - start1:.5f} sec")
+print(f"{end4 - start1:.5f} sec")
+print(f"{end5 - start1:.5f} sec")
