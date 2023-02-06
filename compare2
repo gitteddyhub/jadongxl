@@ -3,8 +3,30 @@ import numpy as np
 # import openpyxl
 import xlsxwriter
 import time
+import sys
+
 
 start1 = time.time()
+
+"""
+### ABBREVEATION ###
+orig : original
+
+
+### valiables ###
+
+df_ : dataframe
+li_ : list
+di_ : dictionary
+pd : process data
+du : duplicate
+dn : digit number
+sigfig : significant figure (유효숫자)
+
+
+"""
+
+
 
 
 """
@@ -61,14 +83,14 @@ out = griddata(n[:,0:2], n[:,2], [(a, b)], method='linear')
 
 
 
-# TODO : Range 지정하기 (5단위 반올림 등)
+# TODO : Data Sheet Range 지정하기 (5단위 반올림 등)
 
 
 
 
 from math import floor, log10
 
-dfpd_r0_origin = pd.read_excel('AVEVA_Mass_R4.xlsx', dtype = 'object')
+df_pd_r0_orig = pd.read_excel('AVEVA_Mass_R1.xlsx', dtype = 'object')
 
 # Todo : Sheet 별로도 작성
 # xl = pd.ExcelFile('PD_INS_221007.xlsx')
@@ -77,21 +99,32 @@ dfpd_r0_origin = pd.read_excel('AVEVA_Mass_R4.xlsx', dtype = 'object')
 
 # Todo: Data Sheet 에 작성 기준 Process Data 파일 이름을 명기하면 좋겠음
 
-dfpd_r0 = dfpd_r0_origin.copy()
-dfpd_r0.loc[99999] = '-'
-dfpd_r0 = dfpd_r0.fillna('-')
-dfpd_r0 = dfpd_r0.drop(index = dfpd_r0[dfpd_r0['TagNo'] == '-'].index)
-
-dfpd_r1_origin = pd.read_excel('AVEVA_Mass_R5.xlsx', dtype = 'object')
-
-dfpd_r1 = dfpd_r1_origin.copy()
-dfpd_r1.loc[99999] = '-'
-dfpd_r1 = dfpd_r1.fillna('-')
-dfpd_r1 = dfpd_r1.drop(index = dfpd_r1[dfpd_r1['TagNo'] == '-'].index)
+df_pd_r0 = df_pd_r0_orig.copy()
+df_pd_r0 = df_pd_r0.fillna('-')
+df_pd_r0 = df_pd_r0.drop(index = df_pd_r0[df_pd_r0['TagNo'] == '-'].index)
+# Tag No 중복 여부 확인
+du_count = len(df_pd_r0.index) - df_pd_r0['TagNo'].nunique()
+if du_count >= 1:
+    li_du = set(df_pd_r0.loc[df_pd_r0.duplicated(['TagNo']), 'TagNo'])
+    print('중복 Tag No 는 다음과 같습니다.', li_du)
+    sys.exit()
 
 
-global flowSig
-flowSig = 3
+df_pd_r1_orig = pd.read_excel('AVEVA_Mass_R2.xlsx', dtype = 'object')
+
+df_pd_r1 = df_pd_r1_orig.copy()
+df_pd_r1 = df_pd_r1.fillna('-')
+df_pd_r1 = df_pd_r1.drop(index = df_pd_r1[df_pd_r1['TagNo'] == '-'].index)
+# Tag No 중복 여부 확인
+du_count = len(df_pd_r1.index) - df_pd_r1['TagNo'].nunique()
+if du_count >= 1:
+    li_du = set(df_pd_r0.loc[df_pd_r0.duplicated(['TagNo']), 'TagNo'])
+    print('중복 Tag No 는 다음과 같습니다.', li_du)
+    sys.exit()
+
+
+global sigfig
+sigfig= 3
 
 end1 = time.time()
 
@@ -99,7 +132,7 @@ end1 = time.time()
 def roundFlow(x):
     if type(x) is float:
         if x >= 100:
-            x = round(x, flowSig - int(floor(log10(abs(x)))) - 1)
+            x = round(x, sigfig - int(floor(log10(abs(x)))) - 1)
             x = int(x)
             return x
         elif 100 > x >= 0.1:
@@ -111,7 +144,7 @@ def roundFlow(x):
 
     elif type(x) is int:
         if x >= 100:
-            x = round(x, flowSig - int(floor(log10(abs(x)))) - 1)
+            x = round(x, sigfig - int(floor(log10(abs(x)))) - 1)
             return x
         else:
             return x
@@ -119,13 +152,13 @@ def roundFlow(x):
         return x
 
 try:
-    dfpd_r0['FlowMax'] = dfpd_r0['FlowMax'].apply(lambda x: roundFlow(x))
-    dfpd_r0['FlowNormal'] = dfpd_r0['FlowNormal'].apply(lambda x: roundFlow(x))
-    dfpd_r0['FlowMin'] = dfpd_r0['FlowMin'].apply(lambda x: roundFlow(x))
+    df_pd_r0['FlowMax'] = df_pd_r0['FlowMax'].apply(lambda x: roundFlow(x))
+    df_pd_r0['FlowNormal'] = df_pd_r0['FlowNormal'].apply(lambda x: roundFlow(x))
+    df_pd_r0['FlowMin'] = df_pd_r0['FlowMin'].apply(lambda x: roundFlow(x))
 
-    dfpd_r1['FlowMax'] = dfpd_r1['FlowMax'].apply(lambda x: roundFlow(x))
-    dfpd_r1['FlowNormal'] = dfpd_r1['FlowNormal'].apply(lambda x: roundFlow(x))
-    dfpd_r1['FlowMin'] = dfpd_r1['FlowMin'].apply(lambda x: roundFlow(x))
+    df_pd_r1['FlowMax'] = df_pd_r1['FlowMax'].apply(lambda x: roundFlow(x))
+    df_pd_r1['FlowNormal'] = df_pd_r1['FlowNormal'].apply(lambda x: roundFlow(x))
+    df_pd_r1['FlowMin'] = df_pd_r1['FlowMin'].apply(lambda x: roundFlow(x))
 except:
     print("No Column Name")
     pass
@@ -135,8 +168,8 @@ global revNo
 revNo = 0
 
 # TODO : 비교할 파일 순으로 Version Control 해야함
-dfpd_r0['RevCon'] = 1
-dfpd_r1['RevCon'] = 2
+df_pd_r0['RevCon'] = 1
+df_pd_r1['RevCon'] = 2
 
 
 # Tag 기반 추가/삭제 아이템
@@ -145,25 +178,25 @@ dfpd_r1['RevCon'] = 2
 
 # TODO : Deleted 열의 Status 에 따른 Tag 확인 부가 복잡하므로 간단하게 정리 필요
 
-df_tag_changed1 = dfpd_r1[~dfpd_r1['Deleted'].str.contains('el|EL|dd|DD')].iloc[:,:-1]
+# tag no 변경 아이템
+# Tag no 변경 후 비교 시 추가 아이템이 되므로 이전 tag no 로 변경하든, 기존 tag no 를 변경된 tag 로 변경 후 비교해야함.
+# 변경 후에는 다시 원복해야 함 (원본 df 와 비교 시 tag no 를 못찾게 되는 경우가 발생함)
+df_tag_changed1 = df_pd_r1[~df_pd_r1['Deleted'].str.contains('el|EL|dd|DD')].iloc[:,:-1]
 df_tag_changed2 = df_tag_changed1[df_tag_changed1['Deleted'].str.len() > 5]
-pre_tag = set(df_tag_changed2['Deleted'])
+set_old_tag = set(df_tag_changed2['Deleted'])
 
-for i in pre_tag:
-    dfpd_r1.loc[dfpd_r1['Deleted'] == i, 'TagNo'] = i
+# 기존 tag 와 비교하기 위해, 기존 tag 로 변경된 tag 를 재 변경
+for i in set_old_tag:
+    df_pd_r1.loc[df_pd_r1['Deleted'] == i, 'TagNo'] = i
 
+# 추가/삭제를 tag no 기반으로 확인하여 집합으로 나열
+set_tag_del1 = set(df_pd_r0['TagNo']) - set(df_pd_r1['TagNo'])
+set_tag_add = set(df_pd_r1['TagNo']) - set(df_pd_r0['TagNo'])
 
-tag_dropped = set(dfpd_r0['TagNo']) - set(dfpd_r1['TagNo'])
-tag_added = set(dfpd_r1['TagNo']) - set(dfpd_r0['TagNo'])
+# TODO : 여기부터 변수 수정해야함
 
-
-print('삭제된 아이템: ', tag_dropped)
-print('추가된 아이템: ', tag_added)
-
-df_dropped = dfpd_r0[dfpd_r0['TagNo'].isin(tag_dropped)].iloc[:,:-1]
-df_added = dfpd_r1[dfpd_r1['TagNo'].isin(tag_added)].iloc[:,:-1]
-
-tag_df_added = set(df_added['TagNo'])
+df_dropped = df_pd_r0[df_pd_r0['TagNo'].isin(set_tag_del1)].iloc[:,:-1]
+df_added = df_pd_r1[df_pd_r1['TagNo'].isin(set_tag_add)].iloc[:,:-1]
 
 ### 판다스 조건///
 ### df.loc[df['age']>40, 'generation'] = '장년'
@@ -171,16 +204,18 @@ tag_df_added = set(df_added['TagNo'])
 
 # Deleted 열중에 deleted 를 포함하는 DF, 이칸에 el 혹은 EL 로 되는 Tag 가 있으면 낭패
 # contains 사용 시 Nan 값이 있으면 에러남
-df_drop_del_r0 = dfpd_r0[dfpd_r0['Deleted'].str.contains('el|EL')].iloc[:,:-1]
-df_drop_del_r1 = dfpd_r1[dfpd_r1['Deleted'].str.contains('el|EL')].iloc[:,:-1]
-tag_del = set(df_drop_del_r1['TagNo']) - set(df_drop_del_r0['TagNo'])
 
-df_del = dfpd_r1[dfpd_r1['TagNo'].isin(tag_del)].iloc[:,:-1]
+# 삭제 표기가 된 tag no 를 집합으로 취합
+df_tag_del_r0 = df_pd_r0[df_pd_r0['Deleted'].str.contains('el|EL')].iloc[:,:-1]
+df_tag_del_r1 = df_pd_r1[df_pd_r1['Deleted'].str.contains('el|EL')].iloc[:,:-1]
+set_tag_del2 = set(df_tag_del_r1['TagNo']) - set(df_tag_del_r0['TagNo'])
+
+df_del = df_pd_r1[df_pd_r1['TagNo'].isin(set_tag_del2)].iloc[:,:-1]
 
 df_drop_total = pd.concat([df_dropped, df_del], ignore_index=True)
 tag_df_drop_total = set(df_drop_total['TagNo'])
 
-df_concatenated = pd.concat([dfpd_r0, dfpd_r1], ignore_index=True)
+df_concatenated = pd.concat([df_pd_r0, df_pd_r1], ignore_index=True)
 
 changes = df_concatenated.drop_duplicates(df_concatenated.columns[2:-1], keep='last')
 
@@ -221,11 +256,12 @@ changedItemList = []
 changedItem=[]
 colorItem=[]
 
-df2_c = dfpd_r1.iloc[:,:-1]
-df2_ci = dfpd_r1.iloc[:,:-1]
-
-# df2_c = dfpd_r1.copy()
-# df2_ci = dfpd_r1.copy()
+df2_c = df_pd_r1_orig.copy()
+print('df2_c :', len(df2_c.index))
+df2_ci = df_pd_r1_orig.copy()
+print('df2_ci :',len(df2_ci.index))
+# df2_c = df_pd_r1.copy()
+# df2_ci = df_pd_r1.copy()
 
 end3 = time.time()
 # Todo 변경된 것이 없을 경우 처리 방법 구현해야함
@@ -237,13 +273,19 @@ for i in range(len(df_changes_r1.index)):
         if (df_changes_r1.iat[i, j] != df_changes_r0.iat[i, j]):
             # changedItemList.append([i,j])
             df_info_changed.iat[i, j] = str(df_changes_r0.iat[i, j]) + " => " + str(df_changes_r1.iat[i,j])
-            # print('변경 :', df_info_changed.iat[i, j])
+            print('출력1 변경 :', df_info_changed.iat[i, j], i, j)
             df2_index = df2_ci.index[df2_ci['TagNo'] == df_changes_r1.iat[i, 3]].tolist()
-            # print(df2_index)
+            print('출력2 df2 인덱스 :', len(df2_ci.index))
+            print('출력3 : ', df2_index, df2_ci.iat[df2_index[0], 3], df_changes_r1.iat[i, 3])
+            print('출력4 : ', df2_c.iat[df2_index[0], j])
 
             changedItemList.append([i, j, df_info_changed.iat[i, j]])
+            print('출력5 : ', i, j, df_info_changed.iat[i, j])
             changedItem.append([df2_index[0], j, df_info_changed.iat[i, j]])
+            print('출력6 : ',df2_index[0], j, df_info_changed.iat[i, j])
             colorItem.append([df2_index[0], j, df2_c.iat[df2_index[0], j]])
+            print('출력7 : ',df2_index[0], j, df2_c.iat[df2_index[0], j])
+        # else : continue
 
 end4 = time.time()
 
@@ -261,13 +303,13 @@ ind_drop = ind_add + len(df_drop_total.index)
 
 # Add, Delete 에 서식 넣기 전 좌표값 받아오기
 
-tag_df_drop_total_list = []
-tag_df_added_list = []
-
-
-for i in range(len(ind_drop)):
-    for j in range(len(df_info_changed.columns)):
-        pass
+# tag_df_drop_total_list = []
+# tag_df_added_list = []
+#
+#
+# for i in range(len(ind_drop)):
+#     for j in range(len(df_info_changed.columns)):
+#         pass
 
 
 
@@ -275,12 +317,6 @@ for i in range(len(ind_drop)):
 
 
 print("변경시트: ", changedItemList)
-
-#
-# with pd.ExcelWriter('campare3.xlsx') as writer:
-#     df_info_changed.to_excel(writer, sheet_name='infor_changed', index = False)
-#     df_added.to_excel(writer, sheet_name='added', index = False)
-#     df_dropped.to_excel(writer, sheet_name='dropped', index = False)
 
 
 # Excel 출력
