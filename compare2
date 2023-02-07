@@ -5,6 +5,8 @@ import xlsxwriter
 import time
 import sys
 
+# Todo : 하나의 Process Data 내에서 중복인 경우 처리
+# TODO : 기존 변경된 tag 관련 문제 수정
 
 start1 = time.time()
 
@@ -22,11 +24,9 @@ pd : process data
 du : duplicate
 dn : digit number
 sigfig : significant figure (유효숫자)
-
+ind : index
 
 """
-
-
 
 
 """
@@ -81,16 +81,12 @@ out = griddata(n[:,0:2], n[:,2], [(a, b)], method='linear')
 
 '''
 
-
-
 # TODO : Data Sheet Range 지정하기 (5단위 반올림 등)
-
-
 
 
 from math import floor, log10
 
-df_pd_r0_orig = pd.read_excel('AVEVA_Mass_R1.xlsx', dtype = 'object')
+df_pd_r0_orig = pd.read_excel('AVEVA_Mass_R1.xlsx', dtype='object')
 
 # Todo : Sheet 별로도 작성
 # xl = pd.ExcelFile('PD_INS_221007.xlsx')
@@ -101,7 +97,7 @@ df_pd_r0_orig = pd.read_excel('AVEVA_Mass_R1.xlsx', dtype = 'object')
 
 df_pd_r0 = df_pd_r0_orig.copy()
 df_pd_r0 = df_pd_r0.fillna('-')
-df_pd_r0 = df_pd_r0.drop(index = df_pd_r0[df_pd_r0['TagNo'] == '-'].index)
+df_pd_r0 = df_pd_r0.drop(index=df_pd_r0[df_pd_r0['TagNo'] == '-'].index)
 # Tag No 중복 여부 확인
 du_count = len(df_pd_r0.index) - df_pd_r0['TagNo'].nunique()
 if du_count >= 1:
@@ -110,11 +106,13 @@ if du_count >= 1:
     sys.exit()
 
 
-df_pd_r1_orig = pd.read_excel('AVEVA_Mass_R2.xlsx', dtype = 'object')
+df_pd_r1_orig = pd.read_excel('AVEVA_Mass_R2.xlsx', dtype='object')
+# 원본에 포맷 지정 시 NAN 이 있으면 에러발생. Workbook 생성에 대한 NAN 수용 옵션이 있는것 같음
+df_pd_r1_orig = df_pd_r1_orig.fillna('-')
 
 df_pd_r1 = df_pd_r1_orig.copy()
 df_pd_r1 = df_pd_r1.fillna('-')
-df_pd_r1 = df_pd_r1.drop(index = df_pd_r1[df_pd_r1['TagNo'] == '-'].index)
+df_pd_r1 = df_pd_r1.drop(index=df_pd_r1[df_pd_r1['TagNo'] == '-'].index)
 # Tag No 중복 여부 확인
 du_count = len(df_pd_r1.index) - df_pd_r1['TagNo'].nunique()
 if du_count >= 1:
@@ -129,6 +127,8 @@ sigfig= 3
 end1 = time.time()
 
 # TODO : 유효 숫자, 반올림 등 조건 확립(코딩 방법 재확인)
+
+
 def roundFlow(x):
     if type(x) is float:
         if x >= 100:
@@ -151,6 +151,7 @@ def roundFlow(x):
     else:
         return x
 
+
 try:
     df_pd_r0['FlowMax'] = df_pd_r0['FlowMax'].apply(lambda x: roundFlow(x))
     df_pd_r0['FlowNormal'] = df_pd_r0['FlowNormal'].apply(lambda x: roundFlow(x))
@@ -159,10 +160,10 @@ try:
     df_pd_r1['FlowMax'] = df_pd_r1['FlowMax'].apply(lambda x: roundFlow(x))
     df_pd_r1['FlowNormal'] = df_pd_r1['FlowNormal'].apply(lambda x: roundFlow(x))
     df_pd_r1['FlowMin'] = df_pd_r1['FlowMin'].apply(lambda x: roundFlow(x))
+
 except:
     print("No Column Name")
     pass
-
 
 global revNo
 revNo = 0
@@ -173,15 +174,15 @@ df_pd_r1['RevCon'] = 2
 
 
 # Tag 기반 추가/삭제 아이템
-## 이게되네;; Status 열에서 FT-002 인 열의 TagNo
-## tag = set(df2[df2['Status'] == 'FT-002']['TagNo'])
+# 이게되네;; Status 열에서 FT-002 인 열의 TagNo
+# tag = set(df2[df2['Status'] == 'FT-002']['TagNo'])
 
 # TODO : Deleted 열의 Status 에 따른 Tag 확인 부가 복잡하므로 간단하게 정리 필요
 
 # tag no 변경 아이템
 # Tag no 변경 후 비교 시 추가 아이템이 되므로 이전 tag no 로 변경하든, 기존 tag no 를 변경된 tag 로 변경 후 비교해야함.
 # 변경 후에는 다시 원복해야 함 (원본 df 와 비교 시 tag no 를 못찾게 되는 경우가 발생함)
-df_tag_changed1 = df_pd_r1[~df_pd_r1['Deleted'].str.contains('el|EL|dd|DD')].iloc[:,:-1]
+df_tag_changed1 = df_pd_r1[~df_pd_r1['Deleted'].str.contains('del|Del|DEL|add|Add|ADD')].iloc[:, :-1]
 df_tag_changed2 = df_tag_changed1[df_tag_changed1['Deleted'].str.len() > 5]
 set_old_tag = set(df_tag_changed2['Deleted'])
 
@@ -189,179 +190,217 @@ set_old_tag = set(df_tag_changed2['Deleted'])
 for i in set_old_tag:
     df_pd_r1.loc[df_pd_r1['Deleted'] == i, 'TagNo'] = i
 
-# 추가/삭제를 tag no 기반으로 확인하여 집합으로 나열
-set_tag_del1 = set(df_pd_r0['TagNo']) - set(df_pd_r1['TagNo'])
-set_tag_add = set(df_pd_r1['TagNo']) - set(df_pd_r0['TagNo'])
+# 추가/삭제를 tag no 기반으로 확인하여 집합으로 나열 (Deleted 열의 Del, Add 가 표시되어 있지 않을 경우를 대비함)
+set_del1 = set(df_pd_r0['TagNo']) - set(df_pd_r1['TagNo'])
+set_add = set(df_pd_r1['TagNo']) - set(df_pd_r0['TagNo'])
 
-# TODO : 여기부터 변수 수정해야함
+df_del1 = df_pd_r0[df_pd_r0['TagNo'].isin(set_del1)].iloc[:, :-1]
+df_add = df_pd_r1[df_pd_r1['TagNo'].isin(set_add)].iloc[:, :-1]
 
-df_dropped = df_pd_r0[df_pd_r0['TagNo'].isin(set_tag_del1)].iloc[:,:-1]
-df_added = df_pd_r1[df_pd_r1['TagNo'].isin(set_tag_add)].iloc[:,:-1]
+# 판다스 조건/// Data Sheet 작성 조건
+# df.loc[df['age']>40, 'generation'] = '장년'
 
-### 판다스 조건///
-### df.loc[df['age']>40, 'generation'] = '장년'
-
-
-# Deleted 열중에 deleted 를 포함하는 DF, 이칸에 el 혹은 EL 로 되는 Tag 가 있으면 낭패
 # contains 사용 시 Nan 값이 있으면 에러남
-
 # 삭제 표기가 된 tag no 를 집합으로 취합
-df_tag_del_r0 = df_pd_r0[df_pd_r0['Deleted'].str.contains('el|EL')].iloc[:,:-1]
-df_tag_del_r1 = df_pd_r1[df_pd_r1['Deleted'].str.contains('el|EL')].iloc[:,:-1]
-set_tag_del2 = set(df_tag_del_r1['TagNo']) - set(df_tag_del_r0['TagNo'])
+df_del_r0 = df_pd_r0[df_pd_r0['Deleted'].str.contains('del|Del|DEL')].iloc[:, :-1]
+df_del_r1 = df_pd_r1[df_pd_r1['Deleted'].str.contains('del|Del|DEL')].iloc[:, :-1]
+set_del2 = set(df_del_r1['TagNo']) - set(df_del_r0['TagNo'])
 
-df_del = df_pd_r1[df_pd_r1['TagNo'].isin(set_tag_del2)].iloc[:,:-1]
+df_del2 = df_pd_r1[df_pd_r1['TagNo'].isin(set_del2)].iloc[:, :-1]
 
-df_drop_total = pd.concat([df_dropped, df_del], ignore_index=True)
-tag_df_drop_total = set(df_drop_total['TagNo'])
+# Tag No 유무로 확인한 삭제 아이템과 Deleted 열의 표시로 확인한 삭제 아이템을 취합
+df_del_total = pd.concat([df_del1, df_del2], ignore_index=True)
+# TODO : set_del_total 사용처 확인
+set_del_total = set(df_del_total['TagNo'])
 
-df_concatenated = pd.concat([df_pd_r0, df_pd_r1], ignore_index=True)
+# Old/New df 를 변합 후 중복을 제거하여 변경된 아이템 추출 과정
+df_conc = pd.concat([df_pd_r0, df_pd_r1], ignore_index=True)
+df_drop_du = df_conc.drop_duplicates(df_conc.columns[2:-1], keep='last')
 
-changes = df_concatenated.drop_duplicates(df_concatenated.columns[2:-1], keep='last')
+# 남은 data 중 tag 가 중복되어있는 아이템이 변경된 아이템임
+li_du = df_drop_du[df_drop_du['TagNo'].duplicated()]['TagNo'].to_list()
+df_changes = df_drop_du[df_drop_du['TagNo'].isin(li_du)]
 
-
-duplicated_list = changes[changes['TagNo'].duplicated()]['TagNo'].to_list()
-df_changes = changes[changes['TagNo'].isin(duplicated_list)]
-
-# print(duplicated_list)
-# print(df_changes)
-
+# 변경된 아이템(중복 삭제 후에도 tag 가 중복된 아이템)을 Old/New 로 분리
 # 맨 뒤의 iloc 은 맨끝이나 맨 앞쪽부터 비교시 분리해야할 컬럼을 위해 사용함. 전체를 나타내도 무방할 경우 삭제.
-df_changes_r0 = df_changes[df_changes['RevCon'] == 1].iloc[:,:-1]
-df_changes_r0 = df_changes_r0.sort_values(by='TagNo')
-# print(df_changes_r0)
-
-## df_changes_r0.sort_values(by='TagNo' , inplace = True) 참조한 사이트의 명령문으로 SettingWithCopyWarning 이 뜸
+df_changes_r0 = df_changes[df_changes['RevCon'] == 1].iloc[:, :-1]
+df_changes_r0.sort_values(by='TagNo', inplace=True)
 
 end2 = time.time()
 
-## 아랫줄 df0 가 쓰이는데가 없다;;
-# df0 = df_changes_r0.sort_values(by='TagNo', ascending=False)
+df_changes_r1 = df_changes[df_changes['RevCon'] == 2].iloc[:, :-1]
+df_changes_r1.sort_values(by='TagNo', inplace=True)
 
-# Todo : 하나의 Process Data 내에서 중복인 경우 처리
-df_changes_r1 = df_changes[df_changes['RevCon'] == 2].iloc[:,:-1]
-df_changes_r1 = df_changes_r1.sort_values(by='TagNo')
-# print('추우우우울력 :', df_changes_r1)
-# print(df_changes_r0.iat[21, 12])
+# 변경된 셀의 포맷 지정을 위하여 리스트 화 (포맷 지정 시 좌표값 및 해당 셀의 값 그리고 포맷 세팅을 지정해야함-openpyxl 로 수정 검토 중)
+li_inf_change = []
+li_inf_change_orig = []
+li_color = []
 
+# TODO : Process Data 의 파일별 이름으로 추후 적용해야함
 
+# 색깔 마킹할 df 와 색깔 및 기존 변경 사항을 기입할 df 를 원본으로 생성
+df_color = df_pd_r1_orig.copy()
+df_col_inf = df_pd_r1_orig.copy()
 
-# df_info_changed = df_changes_r0.copy()
-# for i in range(len(df_changes_r1.index)):
-#     for j in range(len(df_changes_r1.columns)):
-#         if (df_changes_r1.iloc[i, j] != df_changes_r0.iloc[i, j]):
-#             df_info_changed.iloc[i, j] = str(df_changes_r0.iloc[i, j]) + "==>" + str(df_changes_r1.iloc[i,j])
-
-changedItemList = []
-changedItem=[]
-colorItem=[]
-
-df2_c = df_pd_r1_orig.copy()
-print('df2_c :', len(df2_c.index))
-df2_ci = df_pd_r1_orig.copy()
-print('df2_ci :',len(df2_ci.index))
-# df2_c = df_pd_r1.copy()
-# df2_ci = df_pd_r1.copy()
+print(df_pd_r1.shape)
+print(df_pd_r1_orig.shape)
 
 end3 = time.time()
 # Todo 변경된 것이 없을 경우 처리 방법 구현해야함
 
-df_info_changed = df_changes_r1.copy()
+# Procedure : 변경/추가/삭제 아이템을 별도의 Sheet 로 구성함
+df_inf_change = df_changes_r1.copy()
 
+# TODO : 변경 사항 컬러마킹 시트 혹은 변경 전후 값 시트를 모두 할 지
 for i in range(len(df_changes_r1.index)):
     for j in range(len(df_changes_r1.columns)):
-        if (df_changes_r1.iat[i, j] != df_changes_r0.iat[i, j]):
-            # changedItemList.append([i,j])
-            df_info_changed.iat[i, j] = str(df_changes_r0.iat[i, j]) + " => " + str(df_changes_r1.iat[i,j])
-            print('출력1 변경 :', df_info_changed.iat[i, j], i, j)
-            df2_index = df2_ci.index[df2_ci['TagNo'] == df_changes_r1.iat[i, 3]].tolist()
-            print('출력2 df2 인덱스 :', len(df2_ci.index))
-            print('출력3 : ', df2_index, df2_ci.iat[df2_index[0], 3], df_changes_r1.iat[i, 3])
-            print('출력4 : ', df2_c.iat[df2_index[0], j])
+        if df_changes_r1.iat[i, j] != df_changes_r0.iat[i, j]:
+            df_inf_change.iat[i, j] = str(df_changes_r0.iat[i, j]) + " => " + str(df_changes_r1.iat[i, j])
+            # 변경된 아이템의 Tag No 를 원본에서 찾아 그 index 를 리스트로 저장
+            li_change_index = df_col_inf[df_col_inf['TagNo'] == df_changes_r1.iat[i, 3]].index.tolist()
 
-            changedItemList.append([i, j, df_info_changed.iat[i, j]])
-            print('출력5 : ', i, j, df_info_changed.iat[i, j])
-            changedItem.append([df2_index[0], j, df_info_changed.iat[i, j]])
-            print('출력6 : ',df2_index[0], j, df_info_changed.iat[i, j])
-            colorItem.append([df2_index[0], j, df2_c.iat[df2_index[0], j]])
-            print('출력7 : ',df2_index[0], j, df2_c.iat[df2_index[0], j])
+            li_inf_change.append([i, j, df_inf_change.iat[i, j]])
+            li_inf_change_orig.append([li_change_index[0], j, df_inf_change.iat[i, j]])
+            li_color.append([li_change_index[0], j, df_color.iat[li_change_index[0], j]])
         # else : continue
 
 end4 = time.time()
 
-df_info_changed.loc[99999] = ""
-df_added.loc[99999] = ""
+# Procedure : 변경/추가/삭제의 DF 를 하나로 취합 전 사이에 빈칸 추가
+df_inf_change.loc[99999] = ""
+df_add.loc[99999] = ""
 
-indexNo_df_info_changed = len(df_info_changed.index)
+# Procedure : 각 DF 의 열 값 확인(추가/삭제 포맷 지정을 위함)
+ind_df_inf_change = len(df_inf_change.index)
+ind_df_add = len(df_add.index)
+ind_df_del_total = len(df_del_total.index)
+ind_add = len(df_inf_change.index) + len(df_add.index)
+ind_del = ind_add + len(df_del_total.index)
 
-df_info_changed = pd.concat([df_info_changed, df_added, df_drop_total])
-
-indexNo_df_added = len(df_added.index)
-indexNo_df_drop_total = len(df_drop_total.index)
-ind_add = len(df_info_changed.index) + len(df_added.index)
-ind_drop = ind_add + len(df_drop_total.index)
-
-# Add, Delete 에 서식 넣기 전 좌표값 받아오기
-
-# tag_df_drop_total_list = []
-# tag_df_added_list = []
-#
-#
-# for i in range(len(ind_drop)):
-#     for j in range(len(df_info_changed.columns)):
-#         pass
+# Procedure : 변경/추가/삭제의 DF 를 하나로 취합
+df_inf_change = pd.concat([df_inf_change, df_add, df_del_total], ignore_index=True)
 
 
+# 삭제 아이템의 기본 포맷, 수정된 Process Data 에서 삭제된 아이템의 포맷(삭선 및 컬러)을 위한 enumerate
+# df_col_inf 와 df_color 에 표기되는 삭제 아이템의 포맷을 위한 enumerate
+# df_col_inf 와 df_color 의 index 혹은 아이템수량등은 동일함
+li_del_enum1 = []
+li_del_enum2 = []
+li_ind_del = df_col_inf[df_col_inf['TagNo'].isin(set(df_del_r1['TagNo']))].index.to_list()
+
+for i in li_ind_del:
+    for j in range(len(df_col_inf.columns)):
+        li_del_enum1.append([i, j, df_col_inf.iat[i, j]])
+        li_del_enum2.append([i, j, df_color.iat[i, j]])
+
+# inf_changed 에 표기되는 삭제 아이템의 포맷을 위한 enumerate
+li_del_enum3 = []
+li_ind_del2 = df_inf_change[df_inf_change['TagNo'].isin(set_del_total)].index.to_list()
+
+for i in li_ind_del2:
+    for j in range(len(df_inf_change.columns)):
+        li_del_enum3.append([i, j, df_inf_change.iat[i, j]])
 
 
+# df_col_inf 와 df_color 에 표기되는 추가 아이템의 포맷을 위한 enumerate
+li_add_enum1 = []
+li_add_enum2 = []
+li_ind_add = df_col_inf[df_col_inf['TagNo'].isin(set_add)].index.to_list()
+
+for i in li_ind_add:
+    for j in range(len(df_inf_change.columns)):
+        li_add_enum1.append([i, j, df_col_inf.iat[i, j]])
+        li_add_enum2.append([i, j, df_color.iat[i, j]])
+
+# inf_changed 에 표기되는 추가 아이템의 포맷을 위한 enumerate
+li_add_enum3 = []
+li_ind_add = df_inf_change[df_inf_change['TagNo'].isin(set_add)].index.to_list()
+
+for i in li_ind_add:
+    for j in range(len(df_inf_change.columns)):
+        li_add_enum3.append([i, j, df_inf_change.iat[i, j]])
 
 
-print("변경시트: ", changedItemList)
-
-
-# Excel 출력
-writer = pd.ExcelWriter("compare2.xlsx", engine="xlsxwriter")
-df2_ci.to_excel(writer, sheet_name='df2_ci', index=False)
-df2_c.to_excel(writer, sheet_name='df2_c', index=False)
-df_info_changed.to_excel(writer, sheet_name='infor_changed', index=False)
-# df_added.to_excel(writer, sheet_name='added', index=False)
-# df_drop_total.to_excel(writer, sheet_name='dropped', index=False)
+# Excel 출력, 하기 순서대로 sheet 작성
+writer = pd.ExcelWriter("compare7.xlsx", engine="xlsxwriter")
+df_col_inf.to_excel(writer, sheet_name='df_col_inf', index=False)
+df_color.to_excel(writer, sheet_name='df_color', index=False)
+df_inf_change.to_excel(writer, sheet_name='infor_changed', index=False)
+# df_add.to_excel(writer, sheet_name='added', index=False)
+# df_del_total.to_excel(writer, sheet_name='dropped', index=False)
 
 workbook = writer.book
-worksheet1 = writer.sheets['infor_changed']
-worksheet2 = writer.sheets['df2_ci']
-worksheet3 = writer.sheets['df2_c']
+worksheet1 = writer.sheets['df_col_inf']
+worksheet2 = writer.sheets['df_color']
+worksheet3 = writer.sheets['infor_changed']
 
+# cell_format = workbook.add_format({'bold': True, 'text_wrap': True, 'valign': 'vcenter', 'fg_color': 'yellow',
+# 'border': 1})
 
-# cell_format = workbook.add_format({'bold': True, 'text_wrap': True, 'valign': 'vcenter', 'fg_color': 'yellow', 'border': 1})
+header_format = workbook.add_format({'bold': True, 'valign': 'vcenter', 'fg_color': '#D3D3D3', 'border': 1})
+inf_change_format = workbook.add_format({'valign': 'vcenter', 'fg_color': 'yellow', 'border': 1})
+gen_format = workbook.add_format({'border': 1, 'valign': 'vcenter'})
+del_format = workbook.add_format({'font_strikeout': True, 'valign': 'vcenter', 'border': 1})
+del_format2 = workbook.add_format({'font_strikeout': True, 'valign': 'vcenter', 'fg_color': 'yellow', 'border': 1})
+add_format = workbook.add_format({'valign': 'vcenter', 'fg_color': 'yellow', 'border': 1})
 
-cell_format = workbook.add_format({'bold': True, 'valign': 'vcenter', 'fg_color': 'yellow', 'border': 1})
-gen_format = workbook.add_format({'border': 1})
 
 # worksheet2.conditional_format('A1:A20', {'type' : 'no_blanks', 'format' : gen_format})
 
-worksheet1.set_column(0, df_info_changed.shape[1]-1, None ,gen_format)
-worksheet2.set_column(0, df2_ci.shape[1]-1, None ,gen_format)
-worksheet3.set_column(0, df2_c.shape[1]-1, None ,gen_format)
+# 셀 테두리 설정
+worksheet1.set_column(0, df_inf_change.shape[1]-1, None, gen_format)
+worksheet2.set_column(0, df_col_inf.shape[1]-1, None, gen_format)
+worksheet3.set_column(0, df_color.shape[1]-1, None, gen_format)
+# 셀 틀 고정
+worksheet1.freeze_panes('F2')
+worksheet2.freeze_panes(1, 5)
+worksheet3.freeze_panes('F2')
+# 셀 필터링
+worksheet1.autofilter(0, 0, df_col_inf.shape[0]-1, df_col_inf.shape[1]-1,)
+worksheet2.autofilter(0, 0, df_color.shape[0]-1, df_color.shape[1]-1,)
+worksheet3.autofilter(0, 0, df_inf_change.shape[0]-1, df_inf_change.shape[1]-1,)
 
-for col_num, val in enumerate(df_info_changed.columns.values):
-    worksheet1.write(0,col_num, val, cell_format)
+start2 = time.time()
 
-for col_num, val in enumerate(df2_ci.columns.values):
-    worksheet2.write(0,col_num, val, cell_format)
+# Header 포맷 설정
+for col_num, val in enumerate(df_col_inf.columns.values):
+    worksheet1.write(0, col_num, val, header_format)
 
-for col_num, val in enumerate(df2_c.columns.values):
-    worksheet3.write(0,col_num, val, cell_format)
+for col_num, val in enumerate(df_color.columns.values):
+    worksheet2.write(0, col_num, val, header_format)
 
+for col_num, val in enumerate(df_inf_change.columns.values):
+    worksheet3.write(0, col_num, val, header_format)
 
-for i, j, v in changedItemList:
-    worksheet1.write(i+1, j, v, cell_format)
+# 변경사항 포맷 설정
+for i, j, v in li_inf_change_orig:
+    worksheet1.write(i+1, j, v, inf_change_format)
 
-for i , j, v in changedItem:
-    worksheet2.write(i+1, j, v, cell_format)
+for i, j, v in li_color:
+    worksheet2.write(i+1, j, v, inf_change_format)
 
-for i, j, v in colorItem:
-    worksheet3.write(i + 1, j, v, cell_format)
+for i, j, v in li_inf_change:
+    worksheet3.write(i+1, j, v, inf_change_format)
+
+# 삭제아이템 포맷 설정
+for i, j, v in li_del_enum1:
+    worksheet1.write(i+1, j, v, del_format)
+
+for i, j, v in li_del_enum2:
+    worksheet2.write(i+1, j, v, del_format)
+
+for i, j, v in li_del_enum3:
+    worksheet3.write(i+1, j, v, del_format2)
+
+# 추가아이템 포맷 설정
+for i, j, v in li_add_enum1:
+    worksheet1.write(i+1, j, v, add_format)
+
+for i, j, v in li_add_enum2:
+    worksheet2.write(i+1, j, v, add_format)
+
+for i, j, v in li_add_enum3:
+    worksheet3.write(i+1, j, v, add_format)
 
 
 writer.close()
@@ -373,3 +412,4 @@ print(f"{end2 - start1:.5f} sec")
 print(f"{end3 - start1:.5f} sec")
 print(f"{end4 - start1:.5f} sec")
 print(f"{end5 - start1:.5f} sec")
+print(f"{end5 - start2:.5f} sec")
