@@ -25,6 +25,7 @@ du : duplicate
 dn : digit number
 sigfig : significant figure (유효숫자)
 ind : index
+idx : index
 
 """
 
@@ -174,21 +175,35 @@ df_pd_r1['RevCon'] = 2
 
 
 # Tag 기반 추가/삭제 아이템
-# 이게되네;; Status 열에서 FT-002 인 열의 TagNo
+# !!!!이게되네;; Status 열에서 FT-002 인 열의 TagNo
 # tag = set(df2[df2['Status'] == 'FT-002']['TagNo'])
+# !!!!df.loc[(df['A'] >= 5) & (df['A'] < 8), 'B']
+# !!!!df.index.get_loc(df.index[df['b'] == 5][0])
+# 판다스 조건/// Data Sheet 작성 조건
+# !!!!df.loc[df['age']>40, 'generation'] = '장년'
 
 # TODO : Deleted 열의 Status 에 따른 Tag 확인 부가 복잡하므로 간단하게 정리 필요
 
-# tag no 변경 아이템
+# PROCEDURE : tag no 변경 아이템 처리
 # Tag no 변경 후 비교 시 추가 아이템이 되므로 이전 tag no 로 변경하든, 기존 tag no 를 변경된 tag 로 변경 후 비교해야함.
 # 변경 후에는 다시 원복해야 함 (원본 df 와 비교 시 tag no 를 못찾게 되는 경우가 발생함)
 df_tag_changed1 = df_pd_r1[~df_pd_r1['Deleted'].str.contains('del|Del|DEL|add|Add|ADD')].iloc[:, :-1]
 df_tag_changed2 = df_tag_changed1[df_tag_changed1['Deleted'].str.len() > 5]
-set_old_tag = set(df_tag_changed2['Deleted'])
 
-# 기존 tag 와 비교하기 위해, 기존 tag 로 변경된 tag 를 재 변경
-for i in set_old_tag:
-    df_pd_r1.loc[df_pd_r1['Deleted'] == i, 'TagNo'] = i
+# ex1) 변경된 Tag No 와 기존 Tag No 가 추가/삭제가 되지 않도록, 변경된 Tag No 를 기존 Tag No 로 변경
+# set_old_tag = set(df_tag_changed2['Deleted'])
+#
+# for i in set_old_tag:
+#     df_pd_r1.loc[df_pd_r1['Deleted'] == i, 'TagNo'] = i
+
+# ex2) 변경된 Tag No 와 기존 Tag No 가 추가/삭제가 되지 않도록, 기존 Tag No 를 변경된 Tag No 로 변경
+# !!!! set 은 순서가 중요하지 않을 때 사용한다. set 을 둘이상 사용할 때는 적용하고자 하는 순번이 달라질 수 있다. 그래서 to list 로 변경
+
+li_new_tag = df_tag_changed2['TagNo'].tolist()
+li_old_tag = df_tag_changed2['Deleted'].tolist()
+df_pd_r0_tagExist = df_pd_r0.copy()
+for i, j in zip(li_old_tag, li_new_tag):
+    df_pd_r0.loc[df_pd_r0['TagNo'] == i, 'TagNo'] = j
 
 # 추가/삭제를 tag no 기반으로 확인하여 집합으로 나열 (Deleted 열의 Del, Add 가 표시되어 있지 않을 경우를 대비함)
 set_del1 = set(df_pd_r0['TagNo']) - set(df_pd_r1['TagNo'])
@@ -196,9 +211,6 @@ set_add = set(df_pd_r1['TagNo']) - set(df_pd_r0['TagNo'])
 
 df_del1 = df_pd_r0[df_pd_r0['TagNo'].isin(set_del1)].iloc[:, :-1]
 df_add = df_pd_r1[df_pd_r1['TagNo'].isin(set_add)].iloc[:, :-1]
-
-# 판다스 조건/// Data Sheet 작성 조건
-# df.loc[df['age']>40, 'generation'] = '장년'
 
 # contains 사용 시 Nan 값이 있으면 에러남
 # 삭제 표기가 된 tag no 를 집합으로 취합
@@ -213,12 +225,13 @@ df_del_total = pd.concat([df_del1, df_del2], ignore_index=True)
 # TODO : set_del_total 사용처 확인
 set_del_total = set(df_del_total['TagNo'])
 
-# Old/New df 를 변합 후 중복을 제거하여 변경된 아이템 추출 과정
+# Old/New df 를 병합 후 중복을 제거하여 변경된 아이템 추출 과정
 df_conc = pd.concat([df_pd_r0, df_pd_r1], ignore_index=True)
+# Tag No 열부터 중복 삭제
 df_drop_du = df_conc.drop_duplicates(df_conc.columns[2:-1], keep='last')
 
 # 남은 data 중 tag 가 중복되어있는 아이템이 변경된 아이템임
-li_du = df_drop_du[df_drop_du['TagNo'].duplicated()]['TagNo'].to_list()
+li_du = df_drop_du[df_drop_du['TagNo'].duplicated()]['TagNo'].tolist()
 df_changes = df_drop_du[df_drop_du['TagNo'].isin(li_du)]
 
 # 변경된 아이템(중복 삭제 후에도 tag 가 중복된 아이템)을 Old/New 로 분리
@@ -236,14 +249,15 @@ li_inf_change = []
 li_inf_change_orig = []
 li_color = []
 
+li_tag_inf_change = []
+li_tag_inf_change_orig = []
+li_tag_color = []
+
 # TODO : Process Data 의 파일별 이름으로 추후 적용해야함
 
 # 색깔 마킹할 df 와 색깔 및 기존 변경 사항을 기입할 df 를 원본으로 생성
 df_color = df_pd_r1_orig.copy()
 df_col_inf = df_pd_r1_orig.copy()
-
-print(df_pd_r1.shape)
-print(df_pd_r1_orig.shape)
 
 end3 = time.time()
 # Todo 변경된 것이 없을 경우 처리 방법 구현해야함
@@ -251,18 +265,62 @@ end3 = time.time()
 # Procedure : 변경/추가/삭제 아이템을 별도의 Sheet 로 구성함
 df_inf_change = df_changes_r1.copy()
 
-# TODO : 변경 사항 컬러마킹 시트 혹은 변경 전후 값 시트를 모두 할 지
+# TODO : 엑셀로 출력 시, 컬러마킹 시트 혹은 변경 전후 값 시트 중 하나를 고를지 모두 할 지 선택할 수 있도록
+
+# Index No 를 초기화 하지 않아, index 를 list 로 만들어 iat 에 적용시 동일한 DF 가 아닌 경우 에러가 남
+
 for i in range(len(df_changes_r1.index)):
     for j in range(len(df_changes_r1.columns)):
         if df_changes_r1.iat[i, j] != df_changes_r0.iat[i, j]:
             df_inf_change.iat[i, j] = str(df_changes_r0.iat[i, j]) + " => " + str(df_changes_r1.iat[i, j])
             # 변경된 아이템의 Tag No 를 원본에서 찾아 그 index 를 리스트로 저장
-            li_change_index = df_col_inf[df_col_inf['TagNo'] == df_changes_r1.iat[i, 3]].index.tolist()
+            # df_pd_r1 는 df_pd_r1_orig 의 TagNo 가 '-' (NAN) 인 값을 제외한 DF 임
+
+            li_idx_no = df_col_inf[df_col_inf['TagNo'] == df_changes_r1.iat[i, 3]].index
+            li_idx = li_idx_no.tolist()
+            idx = df_col_inf.index.get_loc(li_idx_no[0])
 
             li_inf_change.append([i, j, df_inf_change.iat[i, j]])
-            li_inf_change_orig.append([li_change_index[0], j, df_inf_change.iat[i, j]])
-            li_color.append([li_change_index[0], j, df_color.iat[li_change_index[0], j]])
+            li_inf_change_orig.append([idx, j, df_inf_change.iat[i, j]])
+            li_color.append([idx, j, df_color.iat[idx, j]])
+
         # else : continue
+#
+# for i in li_old_tag:
+#     if df_inf_change['TagNo'] == i:
+#
+#
+#
+#
+#
+#
+#         li_new_tag = df_tag_changed2['TagNo'].tolist()
+#         li_old_tag = df_tag_changed2['Deleted'].tolist()
+#
+
+
+
+
+# TODO : Index 초기화해야함
+# Index 를 초기화하여, index 번호를 iat 에 적용토록 함.
+# .index.get_loc() 은 한개의 아이템 열번호를 가져오기는 편하나 리스트화 하려면 반복문을 사용해야 하므로 코딩이 복잡하게 됨
+
+# for i in range(len(df_changes_r1.index)):
+#     for j in range(len(df_changes_r1.columns)):
+#         if df_changes_r1.iat[i, j] != df_changes_r0.iat[i, j]:
+#             df_inf_change.iat[i, j] = str(df_changes_r0.iat[i, j]) + " => " + str(df_changes_r1.iat[i, j])
+            # 변경된 아이템의 Tag No 를 원본에서 찾아 그 index 를 리스트로 저장
+            # df_pd_r1 는 df_pd_r1_orig 의 TagNo 가 '-' (NAN) 인 값을 제외한 DF 임
+
+            # 열번호가 아닌 Index 번호임. (1)
+            # li_change_index = df_col_inf[df_col_inf['TagNo'] == df_changes_r1.iat[i, 3]].index.tolist()
+
+            # 열번호가 아닌 Index 번호를 iat 의 좌표값으로 사용하므로, Index 번호와 열 번호가 일치하지 않는 DF 일 경우 에러가 남. (2)
+            # li_inf_change_orig.append([li_change_index[0], j, df_inf_change.iat[i, j]])
+            # li_color.append([li_change_index[0], j, df_color.iat[li_change_index[0], j]])
+
+
+
 
 end4 = time.time()
 
@@ -270,34 +328,26 @@ end4 = time.time()
 df_inf_change.loc[99999] = ""
 df_add.loc[99999] = ""
 
-# Procedure : 각 DF 의 열 값 확인(추가/삭제 포맷 지정을 위함)
-ind_df_inf_change = len(df_inf_change.index)
-ind_df_add = len(df_add.index)
-ind_df_del_total = len(df_del_total.index)
-ind_add = len(df_inf_change.index) + len(df_add.index)
-ind_del = ind_add + len(df_del_total.index)
-
 # Procedure : 변경/추가/삭제의 DF 를 하나로 취합
 df_inf_change = pd.concat([df_inf_change, df_add, df_del_total], ignore_index=True)
-
 
 # 삭제 아이템의 기본 포맷, 수정된 Process Data 에서 삭제된 아이템의 포맷(삭선 및 컬러)을 위한 enumerate
 # df_col_inf 와 df_color 에 표기되는 삭제 아이템의 포맷을 위한 enumerate
 # df_col_inf 와 df_color 의 index 혹은 아이템수량등은 동일함
 li_del_enum1 = []
 li_del_enum2 = []
-li_ind_del = df_col_inf[df_col_inf['TagNo'].isin(set(df_del_r1['TagNo']))].index.to_list()
+li_idx_del = df_col_inf[df_col_inf['TagNo'].isin(set(df_del_r1['TagNo']))].index.tolist()
 
-for i in li_ind_del:
+for i in li_idx_del:
     for j in range(len(df_col_inf.columns)):
         li_del_enum1.append([i, j, df_col_inf.iat[i, j]])
         li_del_enum2.append([i, j, df_color.iat[i, j]])
 
 # inf_changed 에 표기되는 삭제 아이템의 포맷을 위한 enumerate
 li_del_enum3 = []
-li_ind_del2 = df_inf_change[df_inf_change['TagNo'].isin(set_del_total)].index.to_list()
+li_idx_del2 = df_inf_change[df_inf_change['TagNo'].isin(set_del_total)].index.tolist()
 
-for i in li_ind_del2:
+for i in li_idx_del2:
     for j in range(len(df_inf_change.columns)):
         li_del_enum3.append([i, j, df_inf_change.iat[i, j]])
 
@@ -305,24 +355,23 @@ for i in li_ind_del2:
 # df_col_inf 와 df_color 에 표기되는 추가 아이템의 포맷을 위한 enumerate
 li_add_enum1 = []
 li_add_enum2 = []
-li_ind_add = df_col_inf[df_col_inf['TagNo'].isin(set_add)].index.to_list()
+li_idx_add = df_col_inf[df_col_inf['TagNo'].isin(set_add)].index.tolist()
 
-for i in li_ind_add:
+for i in li_idx_add:
     for j in range(len(df_inf_change.columns)):
         li_add_enum1.append([i, j, df_col_inf.iat[i, j]])
         li_add_enum2.append([i, j, df_color.iat[i, j]])
 
 # inf_changed 에 표기되는 추가 아이템의 포맷을 위한 enumerate
 li_add_enum3 = []
-li_ind_add = df_inf_change[df_inf_change['TagNo'].isin(set_add)].index.to_list()
+li_idx_add = df_inf_change[df_inf_change['TagNo'].isin(set_add)].index.tolist()
 
-for i in li_ind_add:
+for i in li_idx_add:
     for j in range(len(df_inf_change.columns)):
         li_add_enum3.append([i, j, df_inf_change.iat[i, j]])
 
-
 # Excel 출력, 하기 순서대로 sheet 작성
-writer = pd.ExcelWriter("compare7.xlsx", engine="xlsxwriter")
+writer = pd.ExcelWriter("DataComp3.xlsx", engine="xlsxwriter")
 df_col_inf.to_excel(writer, sheet_name='df_col_inf', index=False)
 df_color.to_excel(writer, sheet_name='df_color', index=False)
 df_inf_change.to_excel(writer, sheet_name='infor_changed', index=False)
@@ -413,3 +462,7 @@ print(f"{end3 - start1:.5f} sec")
 print(f"{end4 - start1:.5f} sec")
 print(f"{end5 - start1:.5f} sec")
 print(f"{end5 - start2:.5f} sec")
+
+
+
+
