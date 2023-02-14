@@ -29,7 +29,6 @@ idx : index
 
 """
 
-
 """
 (df3 는 inst. list, df4 는 piping_summary)
 Vlookup 은 merge 로 수행하며, merge 시 컬럼명이 같으면 추가 해야 할 행만 추가 가능하다.
@@ -82,12 +81,13 @@ out = griddata(n[:,0:2], n[:,2], [(a, b)], method='linear')
 
 '''
 
-# TODO : Data Sheet Range 지정하기 (5단위 반올림 등)
-
-
 from math import floor, log10
 
+# TODO : Data Sheet Range 지정하기 (5단위 반올림 등)
+# Prcd 1 : 엑셀파일 불러오기
+
 df_pd_r0_orig = pd.read_excel('AVEVA_Mass_R1.xlsx', dtype='object')
+df_pd_r1_orig = pd.read_excel('AVEVA_Mass_R2.xlsx', dtype='object')
 
 # Todo : Sheet 별로도 작성
 # xl = pd.ExcelFile('PD_INS_221007.xlsx')
@@ -96,40 +96,37 @@ df_pd_r0_orig = pd.read_excel('AVEVA_Mass_R1.xlsx', dtype='object')
 
 # Todo: Data Sheet 에 작성 기준 Process Data 파일 이름을 명기하면 좋겠음
 
+# Prcd 2 : 불러온 엑셀파일(원본 DF)을 다른이름에 저장하고, 빈셀에 '-' 을 넣고 중복확인 함
 df_pd_r0 = df_pd_r0_orig.copy()
 df_pd_r0 = df_pd_r0.fillna('-')
 df_pd_r0 = df_pd_r0.drop(index=df_pd_r0[df_pd_r0['TagNo'] == '-'].index)
-# Tag No 중복 여부 확인
-du_count = len(df_pd_r0.index) - df_pd_r0['TagNo'].nunique()
+
+du_count = len(df_pd_r0.index) - df_pd_r0['TagNo'].nunique()  # Tag No 중복 여부 확인
 if du_count >= 1:
     li_du = set(df_pd_r0.loc[df_pd_r0.duplicated(['TagNo']), 'TagNo'])
     print('중복 Tag No 는 다음과 같습니다.', li_du)
     sys.exit()
 
-
-df_pd_r1_orig = pd.read_excel('AVEVA_Mass_R2.xlsx', dtype='object')
 # 원본에 포맷 지정 시 NAN 이 있으면 에러발생. Workbook 생성에 대한 NAN 수용 옵션이 있는것 같음
 df_pd_r1_orig = df_pd_r1_orig.fillna('-')
 
 df_pd_r1 = df_pd_r1_orig.copy()
 df_pd_r1 = df_pd_r1.fillna('-')
 df_pd_r1 = df_pd_r1.drop(index=df_pd_r1[df_pd_r1['TagNo'] == '-'].index)
-# Tag No 중복 여부 확인
-du_count = len(df_pd_r1.index) - df_pd_r1['TagNo'].nunique()
+
+du_count = len(df_pd_r1.index) - df_pd_r1['TagNo'].nunique()  # Tag No 중복 여부 확인
 if du_count >= 1:
     li_du = set(df_pd_r1.loc[df_pd_r1.duplicated(['TagNo']), 'TagNo'])
     print('중복 Tag No 는 다음과 같습니다.', li_du)
     sys.exit()
 
-
-global sigfig
-sigfig= 3
+sigfig = 3
 
 end1 = time.time()
 
-# TODO : 유효 숫자, 반올림 등 조건 확립(코딩 방법 재확인)
+# TODO : 유효 숫자, 반올림 등 조건 확립(코딩 방법 재확인), 유량 외의 적용할 다른 값(온,압 등) 과 기준 확인해야함
 
-
+# Prcd 3 : 유효 숫자, 반올림함
 def roundFlow(x):
     if type(x) is float:
         if x >= 100:
@@ -137,10 +134,10 @@ def roundFlow(x):
             x = int(x)
             return x
         elif 100 > x >= 0.1:
-            x = round(x + 10**(-len(str(x))-1), 1)
+            x = round(x + 10 ** (-len(str(x)) - 1), 1)
             return x
         else:
-            x = round(x + 10**(-len(str(x))-1), 3)
+            x = round(x + 10 ** (-len(str(x)) - 1), 3)
             return x
 
     elif type(x) is int:
@@ -151,7 +148,6 @@ def roundFlow(x):
             return x
     else:
         return x
-
 
 try:
     df_pd_r0['FlowMax'] = df_pd_r0['FlowMax'].apply(lambda x: roundFlow(x))
@@ -166,15 +162,12 @@ except:
     print("No Column Name")
     pass
 
-global revNo
 revNo = 0
 
-# TODO : 비교할 파일 순으로 Version Control 해야함
+# Prcd 4 : 비교할 파일 순으로 Version Control 함. 추후 해당 열을 삭제하거나, 추가한 열을 제외하고 불러옴
 df_pd_r0['RevCon'] = 1
 df_pd_r1['RevCon'] = 2
 
-
-# Tag 기반 추가/삭제 아이템
 # !!!!이게되네;; Status 열에서 FT-002 인 열의 TagNo
 # tag = set(df2[df2['Status'] == 'FT-002']['TagNo'])
 # !!!!df.loc[(df['A'] >= 5) & (df['A'] < 8), 'B']
@@ -184,9 +177,11 @@ df_pd_r1['RevCon'] = 2
 
 # TODO : Deleted 열의 Status 에 따른 Tag 확인 부가 복잡하므로 간단하게 정리 필요
 
-# PROCEDURE : tag no 변경 아이템 처리
+# Prcd 5 : tag no 변경 아이템 처리
 # Tag no 변경 후 비교 시 추가 아이템이 되므로 이전 tag no 로 변경하든, 기존 tag no 를 변경된 tag 로 변경 후 비교해야함.
 # 변경 후에는 다시 원복해야 함 (원본 df 와 비교 시 tag no 를 못찾게 되는 경우가 발생함)
+
+# Prcd 5-1 : Deleted 열에 tag no 가 있는 행을 DF 로 불러옴 (contains 사용 시 Nan 값이 있으면 에러남)
 df_tag_changed1 = df_pd_r1[~df_pd_r1['Deleted'].str.contains('del|Del|DEL|add|Add|ADD')].iloc[:, :-1]
 df_tag_changed2 = df_tag_changed1[df_tag_changed1['Deleted'].str.len() > 5]
 
@@ -197,68 +192,69 @@ df_tag_changed2 = df_tag_changed1[df_tag_changed1['Deleted'].str.len() > 5]
 #     df_pd_r1.loc[df_pd_r1['Deleted'] == i, 'TagNo'] = i
 
 # ex2) 변경된 Tag No 와 기존 Tag No 가 추가/삭제가 되지 않도록, 기존 Tag No 를 변경된 Tag No 로 변경
-# !!!! set 은 순서가 중요하지 않을 때 사용한다. set 을 둘이상 사용할 때는 적용하고자 하는 순번이 달라질 수 있다. 그래서 to list 로 변경
 
+# Prcd 5-2 : set_old_tag = set(df_tag_changed2['Deleted']) 처럼 불러올 수도 있으나, set 적용 시 순번이 달라질 수 있으므로 list 로 가져옴
 li_new_tag = df_tag_changed2['TagNo'].tolist()
 li_old_tag = df_tag_changed2['Deleted'].tolist()
 # Tag No 추가/삭제 비교를 위해 기존 tag no 를 신규 tag no 로 변경하여 비교 후, 다시 기존 tag no 와의 비교를 위해 df_pd_r0_tagExist 를 생성
 # df_pd_r0_tagExist = df_pd_r0.copy()
+
 for i, j in zip(li_old_tag, li_new_tag):
     df_pd_r0.loc[df_pd_r0['TagNo'] == i, 'TagNo'] = j
 
-# 추가/삭제를 tag no 기반으로 확인하여 집합으로 나열 (Deleted 열의 Del, Add 가 표시되어 있지 않을 경우를 대비함)
+# Prcd 5-3 : 추가/삭제를 tag no 기반으로 확인하여 집합으로 취합 (Deleted 열의 Del, Add 가 표시되어 있지 않을 경우를 대비함)
 set_del1 = set(df_pd_r0['TagNo']) - set(df_pd_r1['TagNo'])
 set_add = set(df_pd_r1['TagNo']) - set(df_pd_r0['TagNo'])
 
 df_del1 = df_pd_r0[df_pd_r0['TagNo'].isin(set_del1)].iloc[:, :-1]
 df_add = df_pd_r1[df_pd_r1['TagNo'].isin(set_add)].iloc[:, :-1]
 
-# contains 사용 시 Nan 값이 있으면 에러남
-# 삭제 표기가 된 tag no 를 집합으로 취합
+# Prcd 5-4 : Deleted 열에 삭제 표기가 된 tag no 를 집합으로 취합
 df_del_r0 = df_pd_r0[df_pd_r0['Deleted'].str.contains('del|Del|DEL')].iloc[:, :-1]
 df_del_r1 = df_pd_r1[df_pd_r1['Deleted'].str.contains('del|Del|DEL')].iloc[:, :-1]
-set_del2 = set(df_del_r1['TagNo']) - set(df_del_r0['TagNo'])
+set_del2 = set(df_del_r1['TagNo']) - set(df_del_r0['TagNo'])  # Deleted 열에 삭제 표기 기준으로 New 에 삭제된 아이템
 
 df_del2 = df_pd_r1[df_pd_r1['TagNo'].isin(set_del2)].iloc[:, :-1]
 
-# Tag No 유무로 확인한 삭제 아이템과 Deleted 열의 표시로 확인한 삭제 아이템을 취합
+# Prcd 5-5 : Tag No 유무로 확인한 삭제 아이템과 Deleted 열의 표시로 확인한 삭제 아이템을 취합
 df_del_total = pd.concat([df_del1, df_del2], ignore_index=True)
-# TODO : set_del_total 사용처 확인
 set_del_total = set(df_del_total['TagNo'])
 
-# TODO : 삭제된 아이템의 컬러링이 안됨, 삭제된 아이템 중 변경 사항이 있는 경우(변경 후 삭제된 아이템) infor_changed Sheet 에 나오며 삭선 처리가 되지 않음
+# Prcd 5-6 : 비교할 DF 에서 Deleted 열에 삭제 표기가 된 아이템 제외(Deleted 열 기준) - 삭제 아이템중 변경 사항 시 변경된 아이템에 포함됨 (삭선처리 안됨)
 # df_pd_r0, df_pd_r1 에서 del item 삭제 (차집합)
 # index no 가 다른 DF 끼리 차집합시에는 Future Warning 이 뜨는 것 같음.
-# FutureWarning: In a future version, the Index constructor will not infer numeric dtypes when passed object-dtype sequences (matching Series behavior).
+# FutureWarning: In a future version, the Index constructor will not infer numeric dtypes
+# when passed object-dtype sequences (matching Series behavior).
 
-df_pd_r0 = pd.merge(df_pd_r0, df_del_r0, how='outer', indicator=True).query('_merge == "left_only"').drop(columns=['_merge'])
-df_pd_r1 = pd.merge(df_pd_r1, df_del_r1, how='outer', indicator=True).query('_merge == "left_only"').drop(columns=['_merge'])
+df_pd_r0 = pd.merge(df_pd_r0, df_del_r0, how='outer', indicator=True).query('_merge == "left_only"').drop(
+    columns=['_merge'])
+df_pd_r1 = pd.merge(df_pd_r1, df_del_r1, how='outer', indicator=True).query('_merge == "left_only"').drop(
+    columns=['_merge'])
 
-
-# Old/New df 를 병합 후 중복을 제거하여 변경된 아이템 추출 과정
+# Prcd 6: Old/New DF 를 병합 후 중복을 제거하여 변경된 아이템 추출 과정
 df_conc = pd.concat([df_pd_r0, df_pd_r1], ignore_index=True)
 df_drop_du = df_conc.drop_duplicates(df_conc.columns[2:-1], keep='last')
 
-# 남은 data 중 tag 가 중복되어있는 아이템이 변경된 아이템임 (중복이 아닌 아이템은 추가/삭제 아이템)
+# Prcd 6-1 : 중복 제거 후 Tag No 가 중복되어있는 아이템(변경된 아이템) 을 취합 (중복이 아닌 아이템은 추가/삭제 아이템)
 li_du = df_drop_du[df_drop_du['TagNo'].duplicated()]['TagNo'].tolist()
 df_changes = df_drop_du[df_drop_du['TagNo'].isin(li_du)]
 
-# 변경된 아이템(중복 삭제 후에도 tag 가 중복된 아이템)을 Old/New 로 분리
+# Prcd 6-2 : 변경된 아이템(중복 삭제 후에도 tag 가 중복된 아이템)을 Old/New 로 분리
 # 맨 뒤의 iloc 은 맨끝이나 맨 앞쪽부터 비교시 분리해야할 컬럼을 위해 사용함. 전체를 나타내도 무방할 경우 삭제.
 df_changes_r0 = df_changes[df_changes['RevCon'] == 1].iloc[:, :-1]
 df_changes_r0.sort_values(by='TagNo', inplace=True)
 
-# Tag No 를 기준으로 변경된 DF 선별 후, 변경된 tag no 로 수정한 아이템을 기존 tag no 로 수정함
-for i, j in zip(li_new_tag, li_old_tag):
-    df_changes_r0.loc[df_changes_r0['TagNo'] == i, 'TagNo'] = j
-
-
-end2 = time.time()
-
 df_changes_r1 = df_changes[df_changes['RevCon'] == 2].iloc[:, :-1]
 df_changes_r1.sort_values(by='TagNo', inplace=True)
 
-# 변경된 셀의 포맷 지정을 위하여 리스트 화 (포맷 지정 시 좌표값 및 해당 셀의 값 그리고 포맷 세팅을 지정해야함-openpyxl 로 수정 검토 중)
+# Prcd 6-3 : Tag No 를 기준으로 변경된 DF 선별 후, 변경된 tag no 로 수정한 아이템을 기존 tag no 로 수정함
+for i, j in zip(li_new_tag, li_old_tag):
+    df_changes_r0.loc[df_changes_r0['TagNo'] == i, 'TagNo'] = j
+
+end2 = time.time()
+
+# Prcd 7 : 변경된 셀의 포맷 지정을 위하여 리스트 화 (포맷 지정 시 좌표값 및 해당 셀의 값 그리고 포맷 세팅을 지정해야함. xlsxwriter 기준)
+# TODO : openpyxl 로 수정 시 해당 셀 값 필요없이 좌표값만 있으면 됨
 li_inf_change = []
 li_inf_change_orig = []
 li_color = []
@@ -271,33 +267,21 @@ end3 = time.time()
 
 # TODO : Process Data 의 파일별 이름으로 추후 적용해야함
 
-# 색깔 마킹할 df 와 색깔 및 기존 변경 사항을 기입할 df 를 원본으로 생성
-# TODO : 아래 index 초기화와 중복되므로 삭제 해야함 (아래 index 초기화를 앞으로 이동해야함)
-# df_color = df_pd_r1_orig.copy()
-# df_col_inf = df_pd_r1_orig.copy()
+# Prcd 8 : Index 를 iat 의 좌표값에 사용하기 위해 Index 초기화
+# Prcd Branch : 9번은 .index.get_loc() 적용, 10번은 초기화된 index 를 좌표값으로 사용
+df_color = df_pd_r1_orig.reset_index(drop=True)
+df_col_inf = df_pd_r1_orig.reset_index(drop=True)
+df_inf_change = df_changes_r1.reset_index(drop=True)
 
+# Todo 변경된 것이 없을 경우 처리 방법 구현해야함 (구현할게 있나... df.empty 가 True 면 빈 DF임)
 
-# Todo 변경된 것이 없을 경우 처리 방법 구현해야함
-
-# Procedure : 변경/추가/삭제 아이템을 별도의 Sheet 로 구성함
-# df_inf_change = df_changes_r1.copy()
-
-# TODO : 엑셀로 출력 시, 컬러마킹 시트 혹은 변경 전후 값 시트 중 하나를 고를지 모두 할 지 선택할 수 있도록
-
-# Index No 를 초기화 하지 않아, index 를 list 로 만들어 iat 에 적용시 동일한 DF 가 아닌 경우 에러가 남
-# 아래는 index no 를 초기화 하지 않고, 열순서를 get_loc 으로 받아 iat 을 적용함.
-# iat 는 index no 가 아닌 순번으로 값을 불러와야 함.
-
-# TODO : Deleted Item 의 변경 사항이 있을 경우, df_infor_change 에 표기됨
-# TODO : df_infor_change 의 Deleted Item 은 삭선 표기가 되지 않음
-
+# Prcd 9 : DF 비교 및 get_loc 을 이용하여 셀 포맷을 위한 리스트 작성
 # for i in range(len(df_changes_r1.index)):
 #     for j in range(len(df_changes_r1.columns)):
 #         if df_changes_r1.iat[i, j] != df_changes_r0.iat[i, j]:
 #             df_inf_change.iat[i, j] = str(df_changes_r0.iat[i, j]) + " => " + str(df_changes_r1.iat[i, j])
-#             # 변경된 아이템의 Tag No 를 원본에서 찾아 그 index 를 리스트로 저장
-#             # df_pd_r1 는 df_pd_r1_orig 의 TagNo 가 '-' (NAN) 인 값을 제외한 DF 임
 #
+#             # 변경된 아이템의 Tag No 를 원본에서 찾아 그 index 를 리스트로 저장
 #             li_idx_no = df_col_inf[df_col_inf['TagNo'] == df_changes_r1.iat[i, 3]].index
 #             li_idx = li_idx_no.tolist()
 #             idx = df_col_inf.index.get_loc(li_idx_no[0])
@@ -306,45 +290,34 @@ end3 = time.time()
 #             li_inf_change_orig.append([idx, j, df_inf_change.iat[i, j]])
 #             li_color.append([idx, j, df_color.iat[idx, j]])
 
-        # else : continue
+# else : continue
 
-# Index 초기화
-df_color = df_pd_r1_orig.reset_index(drop=True)
-df_col_inf = df_pd_r1_orig.reset_index(drop=True)
-df_inf_change = df_changes_r1.reset_index(drop=True)
-
-# .index.get_loc() 은 한개의 아이템 열번호를 가져오기는 편하나 리스트화 하려면 반복문을 사용해야 하므로 코딩이 복잡하게 됨
-
+# Prcd 10 : DF 비교 및 초기화된 Index 를 좌표값으로 사용하여 셀 포맷을 위한 리스트 작성
 for i in range(len(df_changes_r1.index)):
     for j in range(len(df_changes_r1.columns)):
         if df_changes_r1.iat[i, j] != df_changes_r0.iat[i, j]:
             df_inf_change.iat[i, j] = str(df_changes_r0.iat[i, j]) + " => " + str(df_changes_r1.iat[i, j])
-            # 변경된 아이템의 Tag No 를 원본에서 찾아 그 index 를 리스트로 저장
-            # df_pd_r1 는 df_pd_r1_orig 의 TagNo 가 '-' (NAN) 인 값을 제외한 DF 임
 
-            # 열번호가 아닌 Index 번호임. (1)
+            # 변경된 아이템의 Tag No 를 원본에서 찾아 그 index 를 리스트로 저장
             li_change_index = df_col_inf[df_col_inf['TagNo'] == df_changes_r1.iat[i, 3]].index.tolist()
 
-            # 열번호가 아닌 Index 번호를 iat 의 좌표값으로 사용하므로, Index 번호와 열 번호가 일치하지 않는 DF 일 경우 에러가 남. (2)
             li_inf_change.append([i, j, df_inf_change.iat[i, j]])
             li_inf_change_orig.append([li_change_index[0], j, df_inf_change.iat[i, j]])
             li_color.append([li_change_index[0], j, df_color.iat[li_change_index[0], j]])
 
-
-
-
 end4 = time.time()
 
-# Procedure : 변경/추가/삭제의 DF 를 하나로 취합 전 사이에 빈칸 추가
+# Prcd 11 : 변경/추가/삭제의 DF 사이에 빈 행을 추가(식별용이) 후 하나로 취합 (하나의 Sheet 에 표기하고자 함)
 df_inf_change.loc[99999] = ""
 df_add.loc[99999] = ""
 
-# Procedure : 변경/추가/삭제의 DF 를 하나로 취합
 df_inf_change = pd.concat([df_inf_change, df_add, df_del_total], ignore_index=True)
 
-# 삭제 아이템의 기본 포맷, 수정된 Process Data 에서 삭제된 아이템의 포맷(삭선 및 컬러)을 위한 enumerate
-# df_col_inf 와 df_color 에 표기되는 삭제 아이템의 포맷을 위한 enumerate
-# df_col_inf 와 df_color 의 index 혹은 아이템수량등은 동일함
+
+# TODO : 엑셀로 출력 시, 컬러마킹 시트 혹은 변경 전후 값 시트 중 하나를 고를지 모두 출력할지 선택할 수 있도록 수정 요함
+
+# Prcd 12 : df_col_inf 와 df_color 에 표기되는 삭제 아이템의 포맷을 위한 enumerate 작성 (삭선만)
+# df_col_inf 와 df_color 는 동일한 DF임
 li_del_enum1 = []
 li_del_enum2 = []
 li_idx_del = df_col_inf[df_col_inf['TagNo'].isin(set(df_del_r1['TagNo']))].index.tolist()
@@ -354,7 +327,7 @@ for i in li_idx_del:
         li_del_enum1.append([i, j, df_col_inf.iat[i, j]])
         li_del_enum2.append([i, j, df_color.iat[i, j]])
 
-# inf_changed 에 표기되는 삭제 아이템의 포맷을 위한 enumerate
+# Prcd 13 : inf_changed 에 표기되는 삭제 아이템의 포맷을 위한 enumerate 작성 (삭선 및 색상)
 li_del_enum3 = []
 li_idx_del2 = df_inf_change[df_inf_change['TagNo'].isin(set_del_total)].index.tolist()
 
@@ -362,7 +335,7 @@ for i in li_idx_del2:
     for j in range(len(df_inf_change.columns)):
         li_del_enum3.append([i, j, df_inf_change.iat[i, j]])
 
-# df_col_inf 와 df_color 에 표기되는 추가 아이템의 포맷을 위한 enumerate
+# Prcd 14 : df_col_inf 와 df_color 에 표기되는 추가 아이템의 포맷을 위한 enumerate 작성
 li_add_enum1 = []
 li_add_enum2 = []
 li_idx_add = df_col_inf[df_col_inf['TagNo'].isin(set_add)].index.tolist()
@@ -372,7 +345,7 @@ for i in li_idx_add:
         li_add_enum1.append([i, j, df_col_inf.iat[i, j]])
         li_add_enum2.append([i, j, df_color.iat[i, j]])
 
-# inf_changed 에 표기되는 추가 아이템의 포맷을 위한 enumerate
+# Prcd 15 : inf_changed 에 표기되는 추가 아이템의 포맷을 위한 enumerate 작성
 li_add_enum3 = []
 li_idx_add = df_inf_change[df_inf_change['TagNo'].isin(set_add)].index.tolist()
 
@@ -380,23 +353,20 @@ for i in li_idx_add:
     for j in range(len(df_inf_change.columns)):
         li_add_enum3.append([i, j, df_inf_change.iat[i, j]])
 
+# Prcd 16 : 엑셀파일 생성
 xlFileName = "DataComp6.xlsx"
 # Excel 출력, 하기 순서대로 sheet 작성
 writer = pd.ExcelWriter(xlFileName, engine="xlsxwriter")
 df_col_inf.to_excel(writer, sheet_name='df_col_inf', index=False)
 df_color.to_excel(writer, sheet_name='df_color', index=False)
 df_inf_change.to_excel(writer, sheet_name='infor_changed', index=False)
-# df_add.to_excel(writer, sheet_name='added', index=False)
-# df_del_total.to_excel(writer, sheet_name='dropped', index=False)
 
 workbook = writer.book
 worksheet1 = writer.sheets['df_col_inf']
 worksheet2 = writer.sheets['df_color']
 worksheet3 = writer.sheets['infor_changed']
 
-# cell_format = workbook.add_format({'bold': True, 'text_wrap': True, 'valign': 'vcenter', 'fg_color': 'yellow',
-# 'border': 1})
-
+# Prcd 17 : 셀 서식 만들기
 header_format = workbook.add_format({'bold': True, 'valign': 'vcenter', 'fg_color': '#D3D3D3', 'border': 1})
 inf_change_format = workbook.add_format({'valign': 'vcenter', 'fg_color': 'yellow', 'border': 1})
 gen_format = workbook.add_format({'border': 1, 'valign': 'vcenter'})
@@ -404,25 +374,23 @@ del_format = workbook.add_format({'font_strikeout': True, 'valign': 'vcenter', '
 del_format2 = workbook.add_format({'font_strikeout': True, 'valign': 'vcenter', 'fg_color': 'yellow', 'border': 1})
 add_format = workbook.add_format({'valign': 'vcenter', 'fg_color': 'yellow', 'border': 1})
 
-
-# worksheet2.conditional_format('A1:A20', {'type' : 'no_blanks', 'format' : gen_format})
-
-# 셀 테두리 설정
-worksheet1.set_column(0, df_inf_change.shape[1]-1, None, gen_format)
-worksheet2.set_column(0, df_col_inf.shape[1]-1, None, gen_format)
-worksheet3.set_column(0, df_color.shape[1]-1, None, gen_format)
-# 셀 틀 고정
+# Prcd 17-1 : 셀 테두리 설정
+worksheet1.set_column(0, df_inf_change.shape[1] - 1, None, gen_format)
+worksheet2.set_column(0, df_col_inf.shape[1] - 1, None, gen_format)
+worksheet3.set_column(0, df_color.shape[1] - 1, None, gen_format)
+# Prcd 17-2 : 셀 틀 고정
 worksheet1.freeze_panes('F2')
 worksheet2.freeze_panes(1, 5)
 worksheet3.freeze_panes('F2')
-# 셀 필터링
-worksheet1.autofilter(0, 0, df_col_inf.shape[0]-1, df_col_inf.shape[1]-1,)
-worksheet2.autofilter(0, 0, df_color.shape[0]-1, df_color.shape[1]-1,)
-worksheet3.autofilter(0, 0, df_inf_change.shape[0]-1, df_inf_change.shape[1]-1,)
+# Prcd 17-3 : 셀 필터링
+worksheet1.autofilter(0, 0, df_col_inf.shape[0] - 1, df_col_inf.shape[1] - 1, )
+worksheet2.autofilter(0, 0, df_color.shape[0] - 1, df_color.shape[1] - 1, )
+worksheet3.autofilter(0, 0, df_inf_change.shape[0] - 1, df_inf_change.shape[1] - 1, )
 
 start2 = time.time()
 
-# Header 포맷 설정
+
+# Prcd 18 : Header 포맷 적용
 for col_num, val in enumerate(df_col_inf.columns.values):
     worksheet1.write(0, col_num, val, header_format)
 
@@ -432,37 +400,37 @@ for col_num, val in enumerate(df_color.columns.values):
 for col_num, val in enumerate(df_inf_change.columns.values):
     worksheet3.write(0, col_num, val, header_format)
 
-# 변경사항 포맷 설정
+# Prcd 18-1 : 변경사항 포맷 적용
 for i, j, v in li_inf_change_orig:
-    worksheet1.write(i+1, j, v, inf_change_format)
+    worksheet1.write(i + 1, j, v, inf_change_format)
 
 for i, j, v in li_color:
-    worksheet2.write(i+1, j, v, inf_change_format)
+    worksheet2.write(i + 1, j, v, inf_change_format)
 
 for i, j, v in li_inf_change:
-    worksheet3.write(i+1, j, v, inf_change_format)
+    worksheet3.write(i + 1, j, v, inf_change_format)
 
-# 삭제아이템 포맷 설정
+# Prcd 18-2 : 삭제아이템 포맷 적용
 for i, j, v in li_del_enum1:
-    worksheet1.write(i+1, j, v, del_format)
+    worksheet1.write(i + 1, j, v, del_format)
 
 for i, j, v in li_del_enum2:
-    worksheet2.write(i+1, j, v, del_format)
+    worksheet2.write(i + 1, j, v, del_format)
 
 for i, j, v in li_del_enum3:
-    worksheet3.write(i+1, j, v, del_format2)
+    worksheet3.write(i + 1, j, v, del_format2)
 
-# 추가아이템 포맷 설정
+# Prcd 18-3 : 추가아이템 포맷 적용
 for i, j, v in li_add_enum1:
-    worksheet1.write(i+1, j, v, add_format)
+    worksheet1.write(i + 1, j, v, add_format)
 
 for i, j, v in li_add_enum2:
-    worksheet2.write(i+1, j, v, add_format)
+    worksheet2.write(i + 1, j, v, add_format)
 
 for i, j, v in li_add_enum3:
-    worksheet3.write(i+1, j, v, add_format)
+    worksheet3.write(i + 1, j, v, add_format)
 
-
+# Prcd 19 : 종료
 writer.close()
 
 end5 = time.time()
@@ -474,6 +442,3 @@ print(f"{end4 - start1:.5f} sec")
 print(f"{end5 - start1:.5f} sec")
 print(f"{end5 - start2:.5f} sec")
 print(f'Excel file {xlFileName} was created')
-
-
-
