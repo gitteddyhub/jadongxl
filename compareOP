@@ -1,0 +1,271 @@
+'''
+엑셀 파일에 표스타일이 있을 경우, 저장 시 에러가 생김.
+엑셀 파일의 데이타를 추출해 별도의 엑셀파일로 저장하는 것도 좋은 방법이지만,
+그럴경우 변경된 값 혹은 색상이 있는 파일의 경우, 색상을 불러오기도 힘들고, 누적처리가 까다로움
+
+공정으로부터 표스타일이 없는 엑셀 파일을 요청해야함.
+
+Tag No 변경 아이템의 처리는  A/B -> B/A, B/A -> A/B 의 경우에 Tag No 변경이 아니라, 그 외의 값이 변경된 것으로 처리됨
+
+시트 이름과 열목록은 기본 포맷과 일치해야한다.
+
+Tag No 가 변경된 아이템 중 old tag name 이 잘 못 기재되는 경우, 해당 아이템은 추가 아이템으로 인식된다.
+
+삭제된 아이템이 이전과 변경이 없을 경우 색상 및 삭선은 표현되지 않음
+
+'''
+
+
+import pandas as pd
+import numpy as np
+
+from openpyxl import load_workbook
+from openpyxl.styles import PatternFill
+from openpyxl.styles.fonts import Font
+
+import time
+import sys
+
+start1 = time.time()
+
+# Prcd 1 : Process Data 불러오기
+old_filename = 'AE_Sam1'
+new_filename = 'AE_Sam2'
+extname = '.xlsx'
+comp_filename = new_filename + '_comp' + extname
+
+dfPD_old = pd.read_excel(old_filename + extname, sheet_name=None, dtype='object')
+dfPD_new = pd.read_excel(new_filename + extname, sheet_name=None, dtype='object')
+
+wb=load_workbook(new_filename + extname)
+
+# Prcd 1-1 : Process Data 의 Sheet 이름을 확인하여, 이전버전과 현버전 중 공통된 Sheet 만 비교할 대상으로 리스트화함.
+li_dfPD_old_sh = list(dfPD_old.keys())
+li_dfPD_new_sh = list(dfPD_new.keys())
+PD_sh_name = ['Flow', 'Level', 'Press', 'Temp', 'CV', 'On-Off', 'PSV']
+
+li_intersection = list(set(li_dfPD_old_sh) & set(li_dfPD_new_sh) & set(PD_sh_name))
+
+df_old_list = []
+df_new_list = []
+df_old_list_orig = []
+df_new_list_orig = []
+li_compare_sh = []
+li_missing_sh = []
+li_ws = []
+changed_coord = []
+
+
+for i in li_intersection:
+    df_old_list.append(dfPD_old[i])
+    df_new_list.append(dfPD_new[i])
+    df_old_list_orig.append(dfPD_old[i])
+    df_new_list_orig.append(dfPD_new[i])
+    li_compare_sh.append(i)
+    # globals()['ws_{}'.format(i)] = wb[i]
+    # li_ws.append('ws_' + i)
+
+
+# Prcd 2 : 불러온 엑셀파일(원본 DF)을 다른이름에 저장하고, 빈셀에 '-' 을 넣고 중복확인 함.
+# Prcd 2-1 : 또한 비교할 파일 순으로 Version Control 함. 추후 해당 열을 삭제하거나, 추가한 열을 제외하고 불러옴
+
+for i in range(len(df_old_list)):
+    df_old_list[i] = df_old_list[i].fillna('-')
+    df_old_list[i] = df_old_list[i].drop(index=df_old_list[i][df_old_list[i]['Name'] == '-'].index)
+    df_old_list[i]['RevCon'] = 1
+    du_count = len(df_old_list[i].index) - df_old_list[i]['Name'].nunique()  # Tag No 중복 여부 확인 (unique 한 값이 몇개인지 알려줌)
+    if du_count >= 1:
+        li_du = set(df_old_list[i].loc[df_old_list[i].duplicated(['Name']), 'Name'])
+        print('첫번째 Process Data 의 중복 Tag No 는 다음과 같습니다.', li_du)
+        sys.exit()
+
+for i in range(len(df_new_list)):
+    df_new_list[i] = df_new_list[i].fillna('-')
+    df_new_list[i] = df_new_list[i].drop(index=df_new_list[i][df_new_list[i]['Name'] == '-'].index)
+    df_new_list[i]['RevCon'] = 2
+    du_count = len(df_new_list[i].index) - df_new_list[i]['Name'].nunique()  # Tag No 중복 여부 확인 (unique 한 값이 몇개인지 알려줌)
+    if du_count >= 1:
+        li_du = set(df_new_list[i].loc[df_new_list[i].duplicated(['Name']), 'Name'])
+        print('두번째 Process Data 의 중복 Tag No 는 다음과 같습니다.', li_du)
+        sys.exit()
+
+
+end1 = time.time()
+
+# Prcd 5 : tag no 변경 아이템 처리
+# Tag no 변경 후 비교 시 추가 아이템이 되므로 이전 tag no 로 변경하든, 기존 tag no 를 변경된 tag 로 변경 후 비교해야함.
+# 변경 후에는 다시 원복해야 함 (원본 df 와 비교 시 tag no 를 못찾게 되는 경우가 발생함)
+
+# tag no 변경의 case 는 크게 3개로 나뉜다.
+# case1 : new version 에서 tag no 변경
+# case2 : old version 및 new version 에서 모두 tag no 변경
+# case3 : old version 에서 tag no 변경 후 해당 내용이 new 에서도 동일 (new version 에서 'Old Tag Name' 을 삭제하지 않음)
+# case1, 2 는 new version 에서 'Old Tag Name' 이 있는 아이템만 df 로 취한 후 해당 df 의 'Old Tag Name' 과 'Name' 을 리스트화하여 old version 에 반영
+# case3 로 인하여 old/new version 의 'Old Tag Name' 과 'Name' 이 각각 동일한 tag no 를 확인 후 기준 df 에서 삭제
+
+# old 와 new 의 차이가 많이 나서 'Old Tag Name' 의 item 이 old 에 없는 경우 삭제 및 추가 아이템으로 반영됨
+
+# Prcd 5-1 : Old Tag Name 열에 tag no 가 있는 행을 DF 로 불러옴 (contains 사용 시 Nan 값이 있으면 에러남)
+# CTN : Changed Tag No
+# OTN : Old Tag No
+for sh_name in PD_sh_name:
+    if sh_name in li_compare_sh:
+        sh_no = li_compare_sh.index(sh_name)
+        df_new_CTN = df_new_list[sh_no][df_new_list[sh_no]['Old Tag Name'].str.len() > 3]
+        df_old_CTN = df_old_list[sh_no][df_old_list[sh_no]['Old Tag Name'].str.len() > 3]
+
+        # Prcd 5-1-1 : old tag name 이 있는 아이템의 Tag no 와 기존 tag no 를 리스트로 생성
+        # old tag name 이 있는 아이템 중 old version 과 new version 의 old tag name 과 name 이 동일한 것은 tag 변경 아이템에서 제외
+        li_new_CTN = df_new_CTN['Name'].tolist()
+        li_new_OTN = df_new_CTN['Old Tag Name'].tolist()
+        li_new_CTN_OTN = []
+        for i, j in zip(li_new_CTN, li_new_OTN):
+            li_new_CTN_OTN.append([i, j])
+
+        li_old_CTN = df_old_CTN['Name'].tolist()
+        li_old_OTN = df_old_CTN['Old Tag Name'].tolist()
+
+        li_old_CTN_OTN = []
+        for i, j in zip(li_old_CTN, li_old_OTN):
+            li_old_CTN_OTN.append([i, j])
+
+        li_unchanged_tag = []
+        # li_unchanged_tag = list(set(li_new_CTN_OTN) & set(li_old_CTN_OTN)) # 2차원 리스트는 교집합 적용 안됨 unhashable
+
+        for i in range(len(li_old_CTN_OTN)):
+            if li_old_CTN_OTN[i] in li_new_CTN_OTN:
+                li_unchanged_tag.append(li_old_CTN_OTN[i][0])
+
+        df_new_CTN = df_new_CTN[~df_new_CTN['Name'].isin(li_unchanged_tag)]
+
+        # Prcd 5-2 : set_old_tag = set(df_new_CTN['Old Tag Name']) 처럼 불러올 수도 있으나, set 적용 시 순번이 달라질 수 있으므로 list 로 가져옴
+        li_new_CTN = df_new_CTN['Name'].tolist()
+        li_new_OTN = df_new_CTN['Old Tag Name'].tolist()
+
+        # old version 과 비교하기 전 tag no 가 변경된 아이템은 old version 의 tag no 를 new version 의 tag no 로 변경
+        for i, j in zip(li_new_OTN, li_new_CTN):
+            df_old_list[sh_no].loc[df_old_list[sh_no]['Name'] == i, 'Name'] = j
+
+        # Prcd 5-3 : 추가/삭제를 tag no 기반으로 확인하여 집합으로 취합
+        # Prcd 5-3-1 ('Logically deleted from the project' 열의 True or False 가 표시되어 있지 않을 경우를 대비함)
+        set_del1 = set(df_old_list[sh_no]['Name']) - set(df_new_list[sh_no]['Name'])
+        set_add = set(df_new_list[sh_no]['Name']) - set(df_old_list[sh_no]['Name'])
+
+        df_del1 = df_old_list[sh_no][df_old_list[sh_no]['Name'].isin(set_del1)].iloc[:, :-1]
+        df_add = df_new_list[sh_no][df_new_list[sh_no]['Name'].isin(set_add)].iloc[:, :-1]
+
+        # Prcd 5-4 : 'Logically deleted from the project' 열에 삭제 표기가 된 tag no 를 집합으로 취합
+        df_del_old = df_old_list[sh_no][df_old_list[sh_no]['Logically deleted from the project'].str.contains('TRUE|True|true')].iloc[:,:-1]
+        df_del_new = df_new_list[sh_no][df_new_list[sh_no]['Logically deleted from the project'].str.contains('TRUE|True|true')].iloc[:,:-1]
+        set_del2 = set(df_del_new['Name']) - set(df_del_old['Name'])  # Deleted 열에 삭제 표기 기준으로 New 에 삭제된 아이템
+
+        df_del2 = df_new_list[sh_no][df_new_list[sh_no]['Name'].isin(set_del2)].iloc[:, :-1]
+
+        # Prcd 5-5 : Tag No 유무로 확인한 삭제 아이템과 Deleted 열의 표시로 확인한 삭제 아이템을 취합
+        df_del_total = pd.concat([df_del1, df_del2], ignore_index=True)
+        set_del_total = set(df_del_total['Name'])
+
+        # Prcd 5-6 : 비교할 DF 에서 'Logically deleted from the project' 열에 삭제 표기가 된 아이템 제외
+        # TODO : 삭제 아이템중 변경 사항 시 변경된 아이템에 포함됨 (삭선처리 안됨)
+        # 합집합 후 왼쪽의 DF 만 남김
+        # dfPD_old, dfPD_new 에서 del item 삭제 (차집합)
+        # index no 가 다른 DF 끼리 차집합시에는 Future Warning 이 뜨는 것 같음.
+        # FutureWarning: In a future version, the Index constructor will not infer numeric dtypes
+        # when passed object-dtype sequences (matching Series behavior).
+
+        # TODO : 삭제 아이템 제외 시 df_del_total 을 적용해야하는 것이 아닌지 확인 요함 (중요!!) - 완료
+        # TODO : 삭제 아이템 제외관련 schematic 재정립 필요
+        df_old_list[sh_no] = pd.merge(df_old_list[sh_no], df_del_old, how='outer', indicator=True).query('_merge == "left_only"').drop(columns=['_merge'])
+        df_new_list[sh_no] = pd.merge(df_new_list[sh_no], df_del_total, how='outer', indicator=True).query('_merge == "left_only"').drop(columns=['_merge'])
+
+        # Prcd 6: Old/New DF 를 병합 후 중복을 제거하여 변경된 아이템 추출 과정
+        df_conc = pd.concat([df_old_list[sh_no], df_new_list[sh_no]], ignore_index=True)
+        df_drop_du = df_conc.drop_duplicates(df_conc.columns[1:-1], keep='last')
+
+        # Prcd 6-1 : 중복 제거 후 Tag No 가 중복되어있는 아이템(변경된 아이템) 을 취합 (중복이 아닌 아이템은 추가/삭제 아이템)
+        li_du = df_drop_du[df_drop_du['Name'].duplicated()]['Name'].tolist()
+        df_changes = df_drop_du[df_drop_du['Name'].isin(li_du)]
+
+        # Prcd 6-2 : 변경된 아이템(중복 삭제 후에도 tag 가 중복된 아이템)을 Old/New 로 분리
+        # 맨 뒤의 iloc 은 맨끝이나 맨 앞쪽부터 비교시 분리해야할 컬럼을 위해 사용함. 전체를 나타내도 무방할 경우 삭제.
+        df_changes_old = df_changes[df_changes['RevCon'] == 1].iloc[:, :-1]
+        df_changes_old.sort_values(by='Name', inplace=True)
+
+        df_changes_new = df_changes[df_changes['RevCon'] == 2].iloc[:, :-1]
+        df_changes_new.sort_values(by='Name', inplace=True)
+
+        # Prcd 6-3 : Tag No 를 기준으로 변경된 DF 선별 후, 변경된 tag no 로 수정한 아이템을 기존 tag no 로 수정함
+        for i, j in zip(li_new_CTN, li_new_OTN):
+            df_changes_old.loc[df_changes_old['Name'] == i, 'Name'] = j
+
+
+        # Prcd 8 : Index 를 iat 의 좌표값에 사용하기 위해 Index 초기화
+        # Prcd Branch : 9번은 .index.get_loc() 적용, 10번은 초기화된 index 를 좌표값으로 사용
+        df_color = df_new_list[sh_no].reset_index(drop=True)
+        df_col_inf = df_new_list[sh_no].reset_index(drop=True)
+        df_inf_change = df_changes_new.reset_index(drop=True)
+
+        # Prcd 10 : DF 비교 및 초기화된 Index 를 좌표값으로 사용하여 셀 포맷을 위한 리스트 작성
+
+        changed_coord.clear()
+        # TODO : enumerate 가 계속 실행되므로, Tag 가 많을 경우 속도 저하가 생길 것 같음
+        # TODO : 밑에 k 아래 if 문에 i 를 적용함. k 적용 시 문제점 확인해야함
+        for i in range(len(df_changes_new.index)):
+            for j in range(len(df_changes_new.columns)):
+                if df_changes_new.iat[i, j] != df_changes_old.iat[i, j]:
+                    # df_inf_change.iat[i, j] = str(df_changes_old.iat[i, j]) + " => " + str(df_changes_new.iat[i, j])
+                    for k, name in enumerate(df_new_list_orig[sh_no]['Name']):
+                        if name == df_changes_new.iat[i, 1]:
+                            # changed_coord.append([k, j, str(df_changes_old.iat[i, j]) + " => " + str(df_changes_new.iat[i, j])])
+
+                            row_no = k + 2
+                            wb[sh_name].cell(row=row_no, column=j + 1).value = str(df_changes_old.iat[i, j]) + " => " + str(
+                                df_changes_new.iat[i, j])
+                            wb[sh_name].cell(row=row_no, column=j + 1).fill = PatternFill(fill_type='solid', fgColor="ffff00")
+                            break
+
+        for i, name in enumerate(df_new_list_orig[sh_no]['Name']):
+            for add_name in set_add:
+                if add_name == name:
+                    for j in range(len(df_new_list_orig[sh_no].columns)):
+                        wb[sh_name].cell(row=i + 2, column=j + 1).fill = PatternFill(fill_type='solid',
+                                                                                      fgColor="ffff00")
+
+        for i, name in enumerate(df_new_list_orig[sh_no]['Name']):
+            for del_name in set_del_total:
+                if del_name == name:
+                    for j in range(len(df_new_list_orig[sh_no].columns)):
+                        wb[sh_name].cell(row=i + 2, column=j + 1).fill = PatternFill(fill_type='solid',
+                                                                                      fgColor="ffff00")
+                        wb[sh_name].cell(row=i + 2, column=j + 1).font = Font(strike=True)
+
+        ds_col_name = ['Type', 'Material', 'Thickness']
+        idx_no = len(df_new_list_orig[sh_no].index)
+        col_no = len(df_new_list_orig[sh_no].columns)
+        row_no = col_no + 1
+        for i in ds_col_name:
+            wb[sh_name].cell(row=1, column=row_no).value = i
+            row_no = row_no + 1
+
+
+with pd.ExcelWriter('AEAEAE' + comp_filename) as writer:
+    df_new_list_orig[0].to_excel(writer, sheet_name='Flow', index=False)
+    df_new_list_orig[1].to_excel(writer, sheet_name='Level', index=False)
+    df_new_list_orig[2].to_excel(writer, sheet_name='Press', index=False)
+    df_new_list_orig[3].to_excel(writer, sheet_name='Temp', index=False)
+    df_new_list_orig[4].to_excel(writer, sheet_name='CV', index=False)
+
+
+
+
+
+
+
+
+# Todo 변경된 것이 없을 경우 처리 방법 구현해야함 (구현할게 있나... df.empty 가 True 면 빈 DF임)
+
+
+wb.save(comp_filename)
+end4 = time.time()
+print(f"{end4 - start1:.5f} sec")
+
