@@ -45,7 +45,16 @@ li_dfPD_new_sh = list(dfPD_new.keys())
 print(li_dfPD_new_sh)
 PD_sh_name = ['Flow', 'Level', 'Press', 'Temp', 'CV', 'On-Off', 'PSV']
 
-li_intersection = list(set(li_dfPD_old_sh) & set(li_dfPD_new_sh) & set(PD_sh_name))
+# li_intersection = list(set(li_dfPD_old_sh) & set(li_dfPD_new_sh) & set(PD_sh_name))
+
+li_int_comp = []
+li_int_all = []
+
+for sh_name in PD_sh_name:
+    if sh_name in li_dfPD_old_sh:
+        li_int_all.append(sh_name)
+        if sh_name in li_dfPD_new_sh:
+            li_int_comp.append(sh_name)
 
 df_old_list = []
 df_new_list = []
@@ -65,7 +74,7 @@ oldtagno = 'Old Tag Name'
 inform_change = False
 
 
-for i in li_intersection:
+for i in li_int_comp:
     df_old_list.append(dfPD_old[i])
     df_new_list.append(dfPD_new[i])
     df_old_list_orig.append(dfPD_old[i])
