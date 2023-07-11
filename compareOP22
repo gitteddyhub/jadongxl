@@ -34,196 +34,214 @@ new_filename = 'AE_Sam2'
 extname = '.xlsx'
 comp_filename = new_filename + '_comp' + extname
 
-dfPD_old = pd.read_excel(old_filename + extname, sheet_name=None, dtype='object')
-dfPD_new = pd.read_excel(new_filename + extname, sheet_name=None, dtype='object')
-
-wb=load_workbook(new_filename + extname)
-
-# Prcd 1-1 : Process Data 의 Sheet 이름을 확인하여, 이전버전과 현버전 중 공통된 Sheet 만 비교할 대상으로 리스트화함.
-li_dfPD_old_sh = list(dfPD_old.keys())
-li_dfPD_new_sh = list(dfPD_new.keys())
-print(li_dfPD_new_sh)
-PD_sh_name = ['Flow', 'Level', 'Press', 'Temp', 'CV', 'On-Off', 'PSV']
-
-# li_intersection = list(set(li_dfPD_old_sh) & set(li_dfPD_new_sh) & set(PD_sh_name))
-
-li_int_comp = []
-li_int_all = []
-
-for sh_name in PD_sh_name:
-    if sh_name in li_dfPD_old_sh:
-        li_int_all.append(sh_name)
-        if sh_name in li_dfPD_new_sh:
-            li_int_comp.append(sh_name)
-
-df_old_list = []
-df_new_list = []
-df_old_list_orig = []
-df_new_list_orig = []
-li_compare_sh = []
-li_missing_sh = []
-li_ws = []
-changed_coord = []
-
 exist = 'Logically deleted from the project'
-tagno = 'Name'
-oldtagno = 'Old Tag Name'
+tag_no = 'Name'
+old_tag_no = 'Old Tag Name'
+
+PD_sh_name = ['Flow', 'Level', 'Press', 'Temp', 'CV', 'On-Off', 'PSV', 'Misc']
 
 
 
-inform_change = False
+
+def compPD(filename1, filename2):
+
+    dfPD_old = pd.read_excel(filename1, sheet_name=None, dtype='object')
+    dfPD_new = pd.read_excel(filename2, sheet_name=None, dtype='object')
+
+    wb=load_workbook(filename2)
+
+    # Prcd 1-1 : Process Data 의 Sheet 이름을 확인하여, 이전버전과 현버전 중 공통된 Sheet 만 비교할 대상으로 리스트화함.
+    li_dfPD_old_sh = list(dfPD_old.keys())
+    li_dfPD_new_sh = list(dfPD_new.keys())
+
+    # li_int_comp = list(set(li_dfPD_old_sh) & set(li_dfPD_new_sh) & set(PD_sh_name)) # 비교해야할 시트를 리스트로 만듦
+    # li_int_all = list(set(li_dfPD_new_sh) & set(PD_sh_name))
+
+    li_sh_name_comp = []
+    li_sh_name_new = []
+    li_sh_name_old = []
+
+    for sh_name in PD_sh_name:
+        if sh_name in li_dfPD_new_sh:
+            li_sh_name_new.append(sh_name)
+            if sh_name in li_dfPD_old_sh:
+                li_sh_name_comp.append(sh_name)
+
+        if sh_name in li_dfPD_old_sh:
+            li_sh_name_old.append(sh_name)
+
+    li_df_old = []
+    li_df_new = []
+    li_df_old_orig = []
+    li_df_new_orig = []
+    # li_compare_sh = []
+    # li_missing_sh = []
+    # li_ws = []
+    # changed_coord = []
 
 
-for i in li_int_comp:
-    df_old_list.append(dfPD_old[i])
-    df_new_list.append(dfPD_new[i])
-    df_old_list_orig.append(dfPD_old[i])
-    df_new_list_orig.append(dfPD_new[i])
-    li_compare_sh.append(i)
-    # globals()['ws_{}'.format(i)] = wb[i]
-    # li_ws.append('ws_' + i)
 
-print(df_new_list_orig)
+    inform_change = True
 
-# Prcd 2 : 불러온 엑셀파일(원본 DF)을 다른이름에 저장하고, 빈셀에 '-' 을 넣고 중복확인 함.
-# Prcd 2-1 : 또한 비교할 파일 순으로 Version Control 함. 추후 해당 열을 삭제하거나, 추가한 열을 제외하고 불러옴
+    # for i in li_sh_name_comp:
+    #     li_df_old.append(dfPD_old[i])
+    #     li_df_new.append(dfPD_new[i])
+        # li_df_old_orig.append(dfPD_old[i])
+        # li_df_new_orig.append(dfPD_new[i])
+        # li_compare_sh.append(i)
+        # globals()['ws_{}'.format(i)] = wb[i]
+        # li_ws.append('ws_' + i)
 
-for i in range(len(df_old_list)):
-    df_old_list[i] = df_old_list[i].fillna('-')
-    df_old_list[i] = df_old_list[i].drop(index=df_old_list[i][df_old_list[i]['Name'] == '-'].index)
-    df_old_list[i]['Full Name'] = df_old_list[i]['Name'] + df_old_list[i]['Case']
-    df_old_list[i]['Old Full Name'] = df_old_list[i]['Old Tag Name'] + df_old_list[i]['Case']
-    df_old_list[i]['RevCon'] = 1
+    # for i in li_sh_name_old:
+    #     li_df_old_orig.append(dfPD_old[i])
+    #
+    # for i in li_sh_name_new:
+    #     li_df_new_orig.append(dfPD_new[i])
 
-    df_old_list_orig[i] = df_old_list_orig[i].fillna('-')
-    df_old_list_orig[i] = df_old_list_orig[i].drop(index=df_old_list_orig[i][df_old_list_orig[i]['Name'] == '-'].index)
-    df_old_list_orig[i]['Full Name'] = df_old_list_orig[i]['Name'] + df_old_list_orig[i]['Case']
-    df_old_list_orig[i]['Old Full Name'] = df_old_list_orig[i]['Old Tag Name'] + df_old_list_orig[i]['Case']
+    for i in li_sh_name_comp:
+        li_df_old_orig.append(dfPD_old[i])
+        li_df_new_orig.append(dfPD_new[i])
 
-    du_count = len(df_old_list[i].index) - df_old_list[i]['Full Name'].nunique()  # Tag No 중복 여부 확인 (unique 한 값이 몇개인지 알려줌)
-    if du_count >= 1:
-        li_du = set(df_old_list[i].loc[df_old_list[i].duplicated(['Full Name']), 'Full Name'])
-        print('첫번째 Process Data 의 중복 Tag No 는 다음과 같습니다.', li_du)
-        sys.exit()
+    li_df_old = li_df_old_orig.copy()
+    li_df_new = li_df_new_orig.copy()
 
 
-for i in range(len(df_new_list)):
-    df_new_list[i] = df_new_list[i].fillna('-')
-    df_new_list[i] = df_new_list[i].drop(index=df_new_list[i][df_new_list[i]['Name'] == '-'].index)
-    df_new_list[i]['Full Name'] = df_new_list[i]['Name'] + df_new_list[i]['Case']
-    df_new_list[i]['Old Full Name'] = df_new_list[i]['Old Tag Name'] + df_new_list[i]['Case']
-    df_new_list[i]['RevCon'] = 2
+    # Prcd 2 : 불러온 엑셀파일(원본 DF)을 다른이름에 저장하고, 빈셀에 '-' 을 넣고 중복확인 함.
+    # Prcd 2-1 : 또한 비교할 파일 순으로 Version Control 함. 추후 해당 열을 삭제하거나, 추가한 열을 제외하고 불러옴
 
-    df_new_list_orig[i] = df_new_list_orig[i].fillna('-')
-    df_new_list_orig[i] = df_new_list_orig[i].drop(index=df_new_list_orig[i][df_new_list_orig[i]['Name'] == '-'].index)
-    df_new_list_orig[i]['Full Name'] = df_new_list_orig[i]['Name'] + df_new_list_orig[i]['Case']
-    df_new_list_orig[i]['Old Full Name'] = df_new_list_orig[i]['Old Tag Name'] + df_new_list_orig[i]['Case']
+    for i in range(len(li_df_old)):
+        # global tag
+        li_df_old[i] = li_df_old[i].fillna('-')
+        li_df_old[i] = li_df_old[i].drop(index=li_df_old[i][li_df_old[i][tag_no] == '-'].index)
+        li_df_old[i]['Full Tag'] = li_df_old[i][tag_no] + li_df_old[i]['Case']
+        li_df_old[i]['Old Full Tag'] = li_df_old[i][old_tag_no] + li_df_old[i]['Case']
+        li_df_old[i]['RevCon'] = 1
 
-    du_count = len(df_new_list[i].index) - df_new_list[i]['Full Name'].nunique()  # Tag No 중복 여부 확인 (unique 한 값이 몇개인지 알려줌)
-    if du_count >= 1:
-        li_du = set(df_new_list[i].loc[df_new_list[i].duplicated(['Full Name']), 'Full Name'])
-        print('두번째 Process Data 의 중복 Tag No 는 다음과 같습니다.', li_du)
-        sys.exit()
+        # li_df_old_orig[i] = li_df_old_orig[i].fillna('-')
+        # li_df_old_orig[i] = li_df_old_orig[i].drop(index=li_df_old_orig[i][li_df_old_orig[i][tag] == '-'].index)
+        # li_df_old_orig[i]['Full Tag'] = li_df_old_orig[i][tag] + li_df_old_orig[i]['Case']
+        # li_df_old_orig[i]['Old Full Tag'] = li_df_old_orig[i][old_tag] + li_df_old_orig[i]['Case']
 
-end1 = time.time()
+        du_count = len(li_df_old[i].index) - li_df_old[i]['Full Tag'].nunique()  # Tag No 중복 여부 확인 (unique 한 값이 몇개인지 알려줌)
+        if du_count >= 1:
+            li_du = set(li_df_old[i].loc[li_df_old[i].duplicated(['Full Tag']), 'Full Tag'])
+            print('첫번째 Process Data 의 중복 Tag No 는 다음과 같습니다.', li_du)
+            sys.exit()
 
-# Prcd 5 : tag no 변경 아이템 처리
-# Tag no 변경 후 비교 시 추가 아이템이 되므로 이전 tag no 로 변경하든, 기존 tag no 를 변경된 tag 로 변경 후 비교해야함.
-# 변경 후에는 다시 원복해야 함 (원본 df 와 비교 시 tag no 를 못찾게 되는 경우가 발생함)
 
-# tag no 변경의 case 는 크게 3개로 나뉜다.
-# case1 : new version 에서 tag no 변경
-# case2 : old version 및 new version 에서 모두 tag no 변경
-# case3 : old version 에서 tag no 변경 후 해당 내용이 new 에서도 동일 (new version 에서 'Old Tag Name' 을 삭제하지 않음)
-# case1, 2 는 new version 에서 'Old Tag Name' 이 있는 아이템만 df 로 취한 후 해당 df 의 'Old Tag Name' 과 'Name' 을 리스트화하여 old version 에 반영
-# case3 로 인하여 old/new version 의 'Old Tag Name' 과 'Name' 이 각각 동일한 tag no 를 확인 후 기준 df 에서 삭제
+    for i in range(len(li_df_new)):
+        li_df_new[i] = li_df_new[i].fillna('-')
+        li_df_new[i] = li_df_new[i].drop(index=li_df_new[i][li_df_new[i][tag_no] == '-'].index)
+        li_df_new[i]['Full Tag'] = li_df_new[i][tag_no] + li_df_new[i]['Case']
+        li_df_new[i]['Old Full Tag'] = li_df_new[i][old_tag_no] + li_df_new[i]['Case']
+        li_df_new[i]['RevCon'] = 2
 
-# old 와 new 의 차이가 많이 나서 'Old Tag Name' 의 item 이 old 에 없는 경우 삭제 및 추가 아이템으로 반영됨
+        # li_df_new_orig[i] = li_df_new_orig[i].fillna('-')
+        # li_df_new_orig[i] = li_df_new_orig[i].drop(index=li_df_new_orig[i][li_df_new_orig[i][tag] == '-'].index)
+        # li_df_new_orig[i]['Full Tag'] = li_df_new_orig[i][tag] + li_df_new_orig[i]['Case']
+        # li_df_new_orig[i]['Old Full Tag'] = li_df_new_orig[i][old_tag] + li_df_new_orig[i]['Case']
 
-# Prcd 5-1 : Old Tag Name 열에 tag no 가 있는 행을 DF 로 불러옴 (contains 사용 시 Nan 값이 있으면 에러남)
-# CTN : Changed Tag No
-# OTN : Old Tag No
-for sh_name in PD_sh_name:
-    if sh_name in li_compare_sh:
-        sh_no = li_compare_sh.index(sh_name)
+        du_count = len(li_df_new[i].index) - li_df_new[i]['Full Tag'].nunique()  # Tag No 중복 여부 확인 (unique 한 값이 몇개인지 알려줌)
+        if du_count >= 1:
+            li_du = set(li_df_new[i].loc[li_df_new[i].duplicated(['Full Tag']), 'Full Tag'])
+            print('두번째 Process Data 의 중복 Tag No 는 다음과 같습니다.', li_du)
+            sys.exit()
 
-        df_new_CTN = df_new_list[sh_no][df_new_list[sh_no]['Old Tag Name'].str.len() > 3]
-        df_old_CTN = df_old_list[sh_no][df_old_list[sh_no]['Old Tag Name'].str.len() > 3]
+    end1 = time.time()
+
+    # Prcd 5 : tag no 변경 아이템 처리
+    # Tag no 변경 후 비교 시 추가 아이템이 되므로 이전 tag no 로 변경하든, 기존 tag no 를 변경된 tag 로 변경 후 비교해야함.
+    # 변경 후에는 다시 원복해야 함 (원본 df 와 비교 시 tag no 를 못찾게 되는 경우가 발생함)
+
+    # tag no 변경의 case 는 크게 3개로 나뉜다.
+    # case1 : new version 에서 tag no 변경
+    # case2 : old version 및 new version 에서 모두 tag no 변경
+    # case3 : old version 에서 tag no 변경 후 해당 내용이 new 에서도 동일 (new version 에서 old_tag 을 삭제하지 않음)
+    # case1, 2 는 new version 에서 old_tag 이 있는 아이템만 df 로 취한 후 해당 df 의 old_tag 과 tag 을 리스트화하여 old version 에 반영
+    # case3 로 인하여 old/new version 의 old_tag 과 tag 이 각각 동일한 tag no 를 확인 후 기준 df 에서 삭제
+
+    # old 와 new 의 차이가 많이 나서 old_tag 의 item 이 old 에 없는 경우 삭제 및 추가 아이템으로 반영됨
+
+    # Prcd 5-1 : Old Tag Name 열에 tag no 가 있는 행을 DF 로 불러옴 (contains 사용 시 Nan 값이 있으면 에러남)
+    # CTN : Changed Tag No
+    # OTN : Old Tag No
+    for i in range(len(li_sh_name_comp)):
+        tag_index = []
+        tag_index = li_df_new[i]['Full Tag'].tolist()
+
+        df_new_CTN = li_df_new[i][li_df_new[i][old_tag_no].str.len() > 3]
+        df_old_CTN = li_df_old[i][li_df_old[i][old_tag_no].str.len() > 3]
 
         # Prcd 5-1-1 : old tag name 이 있는 아이템의 Tag no 와 기존 tag no 를 리스트로 생성
         # old tag name 이 있는 아이템 중 old version 과 new version 의 old tag name 과 name 이 동일한 것은 tag 변경 아이템에서 제외
-        li_new_CTN = df_new_CTN['Full Name'].tolist()
-        li_new_OTN = df_new_CTN['Old Full Name'].tolist()
+        li_new_CTN = df_new_CTN['Full Tag'].tolist()
+        li_new_OTN = df_new_CTN['Old Full Tag'].tolist()
         li_new_CTN_OTN = []
-        for i, j in zip(li_new_CTN, li_new_OTN):
-            li_new_CTN_OTN.append([i, j])
+        for j, k in zip(li_new_CTN, li_new_OTN):
+            li_new_CTN_OTN.append([j, k])
 
-        li_old_CTN = df_old_CTN['Full Name'].tolist()
-        li_old_OTN = df_old_CTN['Old Full Name'].tolist()
+        li_old_CTN = df_old_CTN['Full Tag'].tolist()
+        li_old_OTN = df_old_CTN['Old Full Tag'].tolist()
 
         li_old_CTN_OTN = []
-        for i, j in zip(li_old_CTN, li_old_OTN):
-            li_old_CTN_OTN.append([i, j])
+        for j, k in zip(li_old_CTN, li_old_OTN):
+            li_old_CTN_OTN.append([j, k])
 
         li_unchanged_tag = []
         # li_unchanged_tag = list(set(li_new_CTN_OTN) & set(li_old_CTN_OTN)) # 2차원 리스트는 교집합 적용 안됨 unhashable
 
-        for i in range(len(li_old_CTN_OTN)):
-            if li_old_CTN_OTN[i] in li_new_CTN_OTN:
-                li_unchanged_tag.append(li_old_CTN_OTN[i][0])
+        for j in range(len(li_old_CTN_OTN)):
+            if li_old_CTN_OTN[j] in li_new_CTN_OTN:
+                li_unchanged_tag.append(li_old_CTN_OTN[j][0])
 
-        df_new_CTN = df_new_CTN[~df_new_CTN['Full Name'].isin(li_unchanged_tag)]
+        df_new_CTN = df_new_CTN[~df_new_CTN['Full Tag'].isin(li_unchanged_tag)]
 
-        # Prcd 5-2 : set_old_tag = set(df_new_CTN['Old Tag Name']) 처럼 불러올 수도 있으나, set 적용 시 순번이 달라질 수 있으므로 list 로 가져옴
-        li_new_CTN = df_new_CTN['Full Name'].tolist()
-        li_new_OTN = df_new_CTN['Old Full Name'].tolist()
+        # Prcd 5-2 : set_old_tag = set(df_new_CTN[old_tag]) 처럼 불러올 수도 있으나, set 적용 시 순번이 달라질 수 있으므로 list 로 가져옴
+        li_new_CTN = df_new_CTN['Full Tag'].tolist()
+        li_new_OTN = df_new_CTN['Old Full Tag'].tolist()
 
         # old version 과 비교하기 전 tag no 가 변경된 아이템은 old version 의 tag no 를 new version 의 tag no 로 변경
-        for i, j in zip(li_new_OTN, li_new_CTN):
-            df_old_list[sh_no].loc[df_old_list[sh_no]['Full Name'] == i, 'Full Name'] = j
+        for j, k in zip(li_new_OTN, li_new_CTN):
+            li_df_old[i].loc[li_df_old[i]['Full Tag'] == j, 'Full Tag'] = k
 
         # Prcd 5-3 : 추가/삭제를 tag no 기반으로 확인하여 집합으로 취합
-        # Prcd 5-3-1 ('Logically deleted from the project' 열의 True or False 가 표시되어 있지 않을 경우를 대비함)
+        # Prcd 5-3-1 (exist 열의 True or False 가 표시되어 있지 않을 경우를 대비함)
         # TODO : Case 로 인한 Tag 정리 필요
-        set_del1 = set(df_old_list[sh_no]['Full Name']) - set(df_new_list[sh_no]['Full Name'])
-        set_add = set(df_new_list[sh_no]['Full Name']) - set(df_old_list[sh_no]['Full Name'])
+        set_del1 = set(li_df_old[i]['Full Tag']) - set(li_df_new[i]['Full Tag'])
+        set_add = set(li_df_new[i]['Full Tag']) - set(li_df_old[i]['Full Tag'])
 
-        df_del1 = df_old_list[sh_no][df_old_list[sh_no]['Full Name'].isin(set_del1)].iloc[:, :-1]
-        df_add = df_new_list[sh_no][df_new_list[sh_no]['Full Name'].isin(set_add)].iloc[:, :-1]
+        df_del1 = li_df_old[i][li_df_old[i]['Full Tag'].isin(set_del1)].iloc[:, :-1]
+        df_add = li_df_new[i][li_df_new[i]['Full Tag'].isin(set_add)].iloc[:, :-1]
 
-        # Prcd 5-4 : 'Logically deleted from the project' 열에 삭제 표기가 된 tag no 를 집합으로 취합
+        # Prcd 5-4 : exist 열에 삭제 표기가 된 tag no 를 집합으로 취합
 
-        # for i in range(len(df_old_list[sh_no].index)):
-        #     if str(type(df_old_list[sh_no].at[i, 'Logically deleted from the project'])) != "<class 'str'>":
-        #         df_old_list[sh_no].at[i, 'Logically deleted from the project'] = str(df_old_list[sh_no].at[i, 'Logically deleted from the project'])
+        # for i in range(len(li_df_old[sh_no].index)):
+        #     if str(type(li_df_old[sh_no].at[i, exist])) != "<class 'str'>":
+        #         li_df_old[sh_no].at[i, exist] = str(li_df_old[sh_no].at[i, exist])
 
-        df_old_list[sh_no]['Logically deleted from the project'] = df_old_list[sh_no][
-            'Logically deleted from the project'].apply(str)
+        li_df_old[i][exist] = li_df_old[i][exist].apply(str)
 
-        df_old_list[sh_no]['Logically deleted from the project'] = df_old_list[sh_no][
-            'Logically deleted from the project'].str.upper()
+        li_df_old[i][exist] = li_df_old[i][exist].str.upper()
 
-        # for i in range(len(df_new_list[sh_no].index)):
-        #     if str(type(df_new_list[sh_no].at[i, 'Logically deleted from the project'])) != "<class 'str'>":
-        #         df_new_list[sh_no].at[i, 'Logically deleted from the project'] = str(df_new_list[sh_no].at[i, 'Logically deleted from the project'])
+        # for i in range(len(li_df_new[sh_no].index)):
+        #     if str(type(li_df_new[sh_no].at[i, exist])) != "<class 'str'>":
+        #         li_df_new[sh_no].at[i, exist] = str(li_df_new[sh_no].at[i, exist])
 
-        df_new_list[sh_no]['Logically deleted from the project'] = df_new_list[sh_no][
-            'Logically deleted from the project'].apply(str)
+        li_df_new[i][exist] = li_df_new[i][exist].apply(str)
 
-        df_new_list[sh_no]['Logically deleted from the project'] = df_new_list[sh_no][
-            'Logically deleted from the project'].str.upper()
+        li_df_new[i][exist] = li_df_new[i][exist].str.upper()
 
-        df_del_old = df_old_list[sh_no][df_old_list[sh_no]['Logically deleted from the project'].str.contains('TRUE', case=False)].iloc[:,:-1]
-        df_del_new = df_new_list[sh_no][df_new_list[sh_no]['Logically deleted from the project'].str.contains('TRUE', case=False)].iloc[:,:-1]
-        set_del2 = set(df_del_new['Full Name']) - set(df_del_old['Full Name'])  # Deleted 열에 삭제 표기 기준으로 New 에 삭제된 아이템
+        df_del_old = li_df_old[i][li_df_old[i][exist].str.contains('TRUE', case=False)].iloc[:,:-1]
+        df_del_new = li_df_new[i][li_df_new[i][exist].str.contains('TRUE', case=False)].iloc[:,:-1]
+        set_del2 = set(df_del_new['Full Tag']) - set(df_del_old['Full Tag'])  # Deleted 열에 삭제 표기 기준으로 New 에 삭제된 아이템
 
-        df_del2 = df_new_list[sh_no][df_new_list[sh_no]['Full Name'].isin(set_del2)].iloc[:, :-1]
+        df_del2 = li_df_new[i][li_df_new[i]['Full Tag'].isin(set_del2)].iloc[:, :-1]
 
         # Prcd 5-5 : Tag No 유무로 확인한 삭제 아이템과 Deleted 열의 표시로 확인한 삭제 아이템을 취합
         df_del_total = pd.concat([df_del1, df_del2], ignore_index=True)
-        set_del_total = set(df_del_total['Full Name'])
+        set_del_total = set(df_del_total['Full Tag'])
 
-        # Prcd 5-6 : 비교할 DF 에서 'Logically deleted from the project' 열에 삭제 표기가 된 아이템 제외
+        # Prcd 5-6 : 비교할 DF 에서 exist 열에 삭제 표기가 된 아이템 제외
         # TODO : 삭제 아이템중 변경 사항 시 변경된 아이템에 포함됨 (삭선처리 안됨)
         # 합집합 후 왼쪽의 DF 만 남김
         # dfPD_old, dfPD_new 에서 del item 삭제 (차집합)
@@ -233,84 +251,119 @@ for sh_name in PD_sh_name:
 
         # TODO : 삭제 아이템 제외 시 df_del_total 을 적용해야하는 것이 아닌지 확인 요함 (중요!!) - 완료
         # TODO : 삭제 아이템 제외관련 schematic 재정립 필요
-        df_old_list[sh_no] = pd.merge(df_old_list[sh_no], df_del_old, how='outer', indicator=True).query('_merge == "left_only"').drop(columns=['_merge'])
-        df_new_list[sh_no] = pd.merge(df_new_list[sh_no], df_del_total, how='outer', indicator=True).query('_merge == "left_only"').drop(columns=['_merge'])
+        li_df_old[i] = pd.merge(li_df_old[i], df_del_old, how='outer', indicator=True).query(
+            '_merge == "left_only"').drop(columns=['_merge'])
+        li_df_new[i] = pd.merge(li_df_new[i], df_del_total, how='outer', indicator=True).query(
+            '_merge == "left_only"').drop(columns=['_merge'])
 
         # Prcd 6: Old/New DF 를 병합 후 중복을 제거하여 변경된 아이템 추출 과정
-        df_conc = pd.concat([df_old_list[sh_no], df_new_list[sh_no]], ignore_index=True)
+        df_conc = pd.concat([li_df_old[i], li_df_new[i]], ignore_index=True)
         df_drop_du = df_conc.drop_duplicates(df_conc.columns[1:-1], keep='last')
 
         # Prcd 6-1 : 중복 제거 후 Tag No 가 중복되어있는 아이템(변경된 아이템) 을 취합 (중복이 아닌 아이템은 추가/삭제 아이템)
-        li_du = df_drop_du[df_drop_du['Full Name'].duplicated()]['Full Name'].tolist()
-        df_changes = df_drop_du[df_drop_du['Full Name'].isin(li_du)]
+        li_du = df_drop_du[df_drop_du['Full Tag'].duplicated()]['Full Tag'].tolist()
+        df_changes = df_drop_du[df_drop_du['Full Tag'].isin(li_du)]
 
         # Prcd 6-2 : 변경된 아이템(중복 삭제 후에도 tag 가 중복된 아이템)을 Old/New 로 분리
         # 맨 뒤의 iloc 은 맨끝이나 맨 앞쪽부터 비교시 분리해야할 컬럼을 위해 사용함. 전체를 나타내도 무방할 경우 삭제.
         df_changes_old = df_changes[df_changes['RevCon'] == 1].iloc[:, :-1]
-        df_changes_old.sort_values(by='Full Name', inplace=True)
+        df_changes_old.sort_values(by='Full Tag', inplace=True)
 
         df_changes_new = df_changes[df_changes['RevCon'] == 2].iloc[:, :-1]
-        df_changes_new.sort_values(by='Full Name', inplace=True)
+        df_changes_new.sort_values(by='Full Tag', inplace=True)
 
         # Prcd 6-3 : Tag No 를 기준으로 변경된 DF 선별 후, 변경된 tag no 로 수정한 아이템을 기존 tag no 로 수정함
-        for i, j in zip(li_new_CTN, li_new_OTN):
-            df_changes_old.loc[df_changes_old['Full Name'] == i, 'Full Name'] = j
+        for j, k in zip(li_new_CTN, li_new_OTN):
+            df_changes_old.loc[df_changes_old['Full Tag'] == j, 'Full Tag'] = k
 
         # Prcd 8 : Index 를 iat 의 좌표값에 사용하기 위해 Index 초기화
         # Prcd Branch : 9번은 .index.get_loc() 적용, 10번은 초기화된 index 를 좌표값으로 사용
-        # df_color = df_new_list[sh_no].reset_index(drop=True)
-        # df_col_inf = df_new_list[sh_no].reset_index(drop=True)
+        # df_color = li_df_new[sh_no].reset_index(drop=True)
+        # df_col_inf = li_df_new[sh_no].reset_index(drop=True)
         # df_inf_change = df_changes_new.reset_index(drop=True)
 
         # Prcd 10 : DF 비교 및 초기화된 Index 를 좌표값으로 사용하여 셀 포맷을 위한 리스트 작성
 
-        changed_coord.clear()
+        # changed_coord.clear()
         # TODO : enumerate 가 계속 실행되므로, Tag 가 많을 경우 속도 저하가 생길 것 같음
         # TODO : 밑에 k 아래 if 문에 i 를 적용함. k 적용 시 문제점 확인해야함
         # TODO : 변경 전 값을 표시하거나 색상만 표시하는 것을 선택토록해야함.
-        for i in range(len(df_changes_new.index)):
-            for j in range(len(df_changes_new.columns) - 2):
-                if df_changes_new.iat[i, j] != df_changes_old.iat[i, j]:
-                    for k, name in enumerate(df_new_list_orig[sh_no]['Full Name']):
-                        if name == df_changes_new.iat[i, len(df_changes_new.columns)-2]:
-                            row_no = k + 2
+        # for j in range(len(df_changes_new.index)):
+        #     for k in range(len(df_changes_new.columns) - 2):
+        #         if df_changes_new.iat[j, k] != df_changes_old.iat[j, k]:
+        #             for m, name in enumerate(li_df_new_orig[i]['Full Tag']):
+        #                 if name == df_changes_new.iat[i, len(df_changes_new.columns)-2]:
+        #                     row_no = m + 2
+        #
+        #                     wb[sh_name].cell(row=row_no, column=j + 1).fill = PatternFill(fill_type='solid', fgColor="ffff00")
+        #
+        #                     if inform_change:
+        #                         wb[sh_name].cell(row=row_no, column=j + 1).value = str(
+        #                             df_changes_old.iat[i, j]) + " => " + str(
+        #                             df_changes_new.iat[i, j])
+        #                     # break
+        #
+        # for i, name in enumerate(li_df_new_orig[sh_no]['Full Tag']):
+        #     for add_name in set_add:
+        #         if add_name == name:
+        #             for j in range(len(li_df_new_orig[sh_no].columns)-2):
+        #                 wb[sh_name].cell(row=i + 2, column=j + 1).fill = PatternFill(fill_type='solid',
+        #                                                                               fgColor="ffff00")
+        #
+        # for i, name in enumerate(li_df_new_orig[sh_no]['Full Tag']):
+        #     for del_name in set_del_total:
+        #         if del_name == name:
+        #             for j in range(len(li_df_new_orig[sh_no].columns)-2):
+        #                 wb[sh_name].cell(row=i + 2, column=j + 1).fill = PatternFill(fill_type='solid',
+        #                                                                               fgColor="ffff00")
+        #                 wb[sh_name].cell(row=i + 2, column=j + 1).font = Font(strike=True)
 
-                            wb[sh_name].cell(row=row_no, column=j + 1).fill = PatternFill(fill_type='solid', fgColor="ffff00")
+        for j in range(len(df_changes_new.index)):
+            for k in range(len(df_changes_new.columns) - 2):
+                if df_changes_new.iat[j, k] != df_changes_old.iat[j, k]:
+                    for tag in tag_index:
+                        if tag == df_changes_new.iat[j, len(df_changes_new.columns) - 2]:
+                            row_no = tag_index.index(tag) + 2
+
+                            wb[li_sh_name_comp[i]].cell(row=row_no, column=k + 1).fill = PatternFill(fill_type='solid', fgColor="ffff00")
 
                             if inform_change:
-                                wb[sh_name].cell(row=row_no, column=j + 1).value = str(
-                                    df_changes_old.iat[i, j]) + " => " + str(
-                                    df_changes_new.iat[i, j])
+                                wb[li_sh_name_comp[i]].cell(row=row_no, column=k + 1).value = str(
+                                    df_changes_old.iat[j, k]) + " => " + str(
+                                    df_changes_new.iat[j, k])
                             # break
 
-        for i, name in enumerate(df_new_list_orig[sh_no]['Full Name']):
+        for tag in tag_index:
             for add_name in set_add:
-                if add_name == name:
-                    for j in range(len(df_new_list_orig[sh_no].columns)-2):
-                        wb[sh_name].cell(row=i + 2, column=j + 1).fill = PatternFill(fill_type='solid',
-                                                                                      fgColor="ffff00")
+                if add_name == tag:
+                    j = tag_index.index(tag)
+                    for k in range(len(df_changes_new.columns) - 2):
+                        wb[li_sh_name_comp[i]].cell(row=j + 2, column=k + 1).fill = PatternFill(fill_type='solid',
+                                                                                     fgColor="ffff00")
 
-        for i, name in enumerate(df_new_list_orig[sh_no]['Full Name']):
             for del_name in set_del_total:
-                if del_name == name:
-                    for j in range(len(df_new_list_orig[sh_no].columns)-2):
-                        wb[sh_name].cell(row=i + 2, column=j + 1).fill = PatternFill(fill_type='solid',
-                                                                                      fgColor="ffff00")
-                        wb[sh_name].cell(row=i + 2, column=j + 1).font = Font(strike=True)
+                if del_name == tag:
+                    j = tag_index.index(tag)
+
+                    for k in range(len(df_changes_new.columns) - 2):
+                        wb[li_sh_name_comp[i]].cell(row=j + 2, column=k + 1).fill = PatternFill(fill_type='solid',
+                                                                                     fgColor="ffff00")
+                        wb[li_sh_name_comp[i]].cell(row=j + 2, column=k + 1).font = Font(strike=True)
+
 
 
 # Todo 변경된 것이 없을 경우 처리 방법 구현해야함 (구현할게 있나... df.empty 가 True 면 빈 DF임)
 
 
-inst_type = []
+    inst_type = []
 
 # for sh_no in li_dfPD_new_sh:
 #     print(sh_no)
 #     print(dfPD_new[sh_no]['Inst Type Desc'].unique().tolist())
 #
-# print(df_new_list_orig)
+# print(li_df_new_orig)
 #
-# df_ds_list = df_new_list_orig[['Rev', 'Name', 'Case', 'Old Tag Name', 'Logically deleted from the project', 'Qty', 'P&ID No', 'Service', 'Inst Type Desc', 'Line Size', 'Line Spec', 'Fluid Code', 'Phase', 'OP Max', 'OP Nor', 'OP Min', 'OP UOM', 'OT Max', 'OT Nor', 'OT Min', 'OT UOM', 'DP (Int)', 'DP (FV)', 'DT Hot', 'DT Cold', 'Flow Rate Max', 'Flow Rate Nor', 'Flow Rate Min', 'Flow Rate UOM', 'Pressure Loss Maximum', 'Density', 'Viscosity', 'MW', 'CpCv', 'Comp. Z', 'Remarks-PS']]
+# df_ds_list = li_df_new_orig[['Rev', 'Name', 'Case', 'Old Tag Name', exist, 'Qty', 'P&ID No', 'Service', 'Inst Type Desc', 'Line Size', 'Line Spec', 'Fluid Code', 'Phase', 'OP Max', 'OP Nor', 'OP Min', 'OP UOM', 'OT Max', 'OT Nor', 'OT Min', 'OT UOM', 'DP (Int)', 'DP (FV)', 'DT Hot', 'DT Cold', 'Flow Rate Max', 'Flow Rate Nor', 'Flow Rate Min', 'Flow Rate UOM', 'Pressure Loss Maximum', 'Density', 'Viscosity', 'MW', 'CpCv', 'Comp. Z', 'Remarks-PS']]
 #
 # df_ds_list = df_ds_list.assign(Line_Schedule=np.nan, Nace_Requirement=np.nan, Enclosure_Class=np.nan, Application_Code=np.nan, Ori_Type=np.nan, Ori_Matl=np.nan, Thickness=np.nan, BoreDiameter=np.nan, Beta_Ratio=np.nan, Drain_Vent_Hole=np.nan, Flow_Full_Scale=np.nan, Flange_Size=np.nan, Flange_rating=np.nan, Flange_Type=np.nan, Matl_Flange=np.nan, Matl_Gasket=np.nan, Matl_Bolts&Nuts=np.nan, Matl_Jack=np.nan, Tap_Type=np.nan, Tap_Size=np.nan, Tap_Orientation=np.nan, Taps_Nipple_Type=np.nan, Tap_Valve=np.nan, MFR=np.nan, Model_No=np.nan, Note1=np.nan, Note2=np.nan, Note3=np.nan, Note4=np.nan, Note5=np.nan, Note6=np.nan)
 #
@@ -318,7 +371,55 @@ inst_type = []
 #
 # print(df_ds_list)
 
-wb.save(comp_filename)
-end4 = time.time()
-print(f"{end4 - start1:.5f} sec")
+    wb.save(comp_filename)
+    end4 = time.time()
+    print(f"{end4 - start1:.5f} sec")
 
+
+def makeDS(filename1):
+    dfPD = pd.read_excel(filename1, sheet_name=None, dtype='object')
+
+    wb = load_workbook(filename1)
+
+    # Prcd 1-1 : Process Data 의 Sheet 이름을 확인하여, 이전버전과 현버전 중 공통된 Sheet 만 비교할 대상으로 리스트화함.
+    li_dfPD_sh = list(dfPD.keys())
+    li_sh_name = []
+
+    for sh_name in PD_sh_name:
+        if sh_name in li_dfPD_sh:
+            li_sh_name.append(sh_name)
+
+    li_df = []
+    li_df_orig = []
+    li_df_new_orig = []
+
+
+    for i in li_sh_name:
+        li_df_orig.append(dfPD[i])
+
+    li_df = li_df_orig.copy()
+
+    for i in range(len(li_df_old)):
+        # global tag
+        li_df_old[i] = li_df_old[i].fillna('-')
+        li_df_old[i] = li_df_old[i].drop(index=li_df_old[i][li_df_old[i][tag_no] == '-'].index)
+        li_df_old[i]['Full Tag'] = li_df_old[i][tag_no] + li_df_old[i]['Case']
+        li_df_old[i]['Old Full Tag'] = li_df_old[i][old_tag_no] + li_df_old[i]['Case']
+        li_df_old[i]['RevCon'] = 1
+
+        # li_df_old_orig[i] = li_df_old_orig[i].fillna('-')
+        # li_df_old_orig[i] = li_df_old_orig[i].drop(index=li_df_old_orig[i][li_df_old_orig[i][tag] == '-'].index)
+        # li_df_old_orig[i]['Full Tag'] = li_df_old_orig[i][tag] + li_df_old_orig[i]['Case']
+        # li_df_old_orig[i]['Old Full Tag'] = li_df_old_orig[i][old_tag] + li_df_old_orig[i]['Case']
+
+        du_count = len(li_df_old[i].index) - li_df_old[i][
+            'Full Tag'].nunique()  # Tag No 중복 여부 확인 (unique 한 값이 몇개인지 알려줌)
+        if du_count >= 1:
+            li_du = set(li_df_old[i].loc[li_df_old[i].duplicated(['Full Tag']), 'Full Tag'])
+            print('첫번째 Process Data 의 중복 Tag No 는 다음과 같습니다.', li_du)
+            sys.exit()
+
+
+
+
+compPD(old_filename + extname, new_filename + extname)
