@@ -1,0 +1,92 @@
+
+import pandas as pd
+import numpy as np
+
+from openpyxl import load_workbook
+from openpyxl.styles import PatternFill
+from openpyxl.styles.fonts import Font
+
+import time
+import sys
+
+start1 = time.time()
+
+# Prcd 1 : Process Data 불러오기
+old_filename = 'AE_Sam1'
+new_filename = 'AE_Sam2'
+extname = '.xlsx'
+comp_filename = new_filename + '_comp' + extname
+
+exist = 'Logically deleted from the project'
+tag_no = 'Name'
+old_tag_no = 'Old Tag Name'
+
+PD_sh_name = ['Flow', 'Level', 'Press', 'Temp', 'CV', 'On-Off', 'PSV', 'Misc']
+
+
+def makeDS(filename1):
+    dfPD = pd.read_excel(filename1, sheet_name=None, dtype='object')
+
+    wb = load_workbook(filename1)
+
+    # Prcd 1-1 : Process Data 의 Sheet 이름을 확인하여, 이전버전과 현버전 중 공통된 Sheet 만 비교할 대상으로 리스트화함.
+    li_dfPD_sh = list(dfPD.keys())
+    li_sh_name = []
+
+    for sh_name in PD_sh_name:
+        if sh_name in li_dfPD_sh:
+            li_sh_name.append(sh_name)
+
+    li_df = []
+    li_df_orig = []
+    li_df_new_orig = []
+    inst_type = []
+
+    for i in li_sh_name:
+        li_df_orig.append(dfPD[i])
+
+    li_df = li_df_orig.copy()
+
+    for i in range(len(li_df)):
+        # global tag
+        li_df[i] = li_df[i].fillna('-')
+        li_df[i] = li_df[i].drop(index=li_df[i][li_df[i][tag_no] == '-'].index)
+
+        li_df[i]['Inst Type Desc'] = li_df[i]['Inst Type Desc'].apply(str)
+        li_df[i]['Inst Type Desc'] = li_df[i]['Inst Type Desc'].str.upper()
+
+        li_df[i]['Full Tag'] = li_df[i][tag_no] + li_df[i]['Case']
+        li_df[i]['Old Full Tag'] = li_df[i][old_tag_no] + li_df[i]['Case']
+        li_df[i]['RevCon'] = 1
+
+        du_count = len(li_df[i].index) - li_df[i][
+            'Full Tag'].nunique()  # Tag No 중복 여부 확인 (unique 한 값이 몇개인지 알려줌)
+        if du_count >= 1:
+            li_du = set(li_df[i].loc[li_df[i].duplicated(['Full Tag']), 'Full Tag'])
+            print('첫번째 Process Data 의 중복 Tag No 는 다음과 같습니다.', li_du)
+            sys.exit()
+
+    for i in li_df:
+        inst_type.append(i['Inst Type Desc'].unique().tolist())
+        df_mass = i[i['Inst Type Desc'].str.contains('MASS', case=False)]
+        print(df_mass)
+
+    df_ds_list = li_df[0][['Rev', tag_no, 'Case', old_tag_no, exist, 'Qty', 'P&ID No', 'Service', 'Inst Type Desc',
+                        'Line Size', 'Line Spec', 'Fluid Code', 'Phase', 'OP Max', 'OP Nor', 'OP Min', 'OP UOM',
+                        'OT Max', 'OT Nor', 'OT Min', 'OT UOM', 'DP (Int)', 'DP (FV)', 'DT Hot', 'DT Cold',
+                        'Flow Rate Max', 'Flow Rate Nor', 'Flow Rate Min', 'Flow Rate UOM', 'Pressure Loss Maximum',
+                        'Density', 'Viscosity', 'MW', 'CpCv', 'Comp. Z', 'Remarks-PS']]
+
+    df_ds_list = df_ds_list.assign(Line_Schedule=np.nan, Nace_Requirement=np.nan, Enclosure_Class=np.nan,
+                                   Application_Code=np.nan, Ori_Type=np.nan, Ori_Matl=np.nan, Thickness=np.nan,
+                                   BoreDiameter=np.nan, Beta_Ratio=np.nan, Drain_Vent_Hole=np.nan,
+                                   Flow_Full_Scale=np.nan, Flange_Size=np.nan, Flange_rating=np.nan,
+                                   Flange_Type=np.nan, Matl_Flange=np.nan, Matl_Gasket=np.nan, Matl_Bolts_Nuts=np.nan,
+                                   Matl_Jack=np.nan, Tap_Type=np.nan, Tap_Size=np.nan, Tap_Orientation=np.nan,
+                                   Taps_Nipple_Type=np.nan, Tap_Valve=np.nan, MFR=np.nan, Model_No=np.nan,
+                                   Note1=np.nan, Note2=np.nan, Note3=np.nan, Note4=np.nan, Note5=np.nan, Note6=np.nan)
+
+
+    print(inst_type)
+
+makeDS(old_filename + extname)
