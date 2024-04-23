@@ -103,6 +103,7 @@ def data_preprocess(*two_data):
 
 
 proc_data = data_preprocess(data_info[0], data_info[1])
+print(proc_data)
 
 
 def changed_tag_apply():
@@ -188,6 +189,7 @@ item_count = add_del_item_check()
 def df_compare():
     wb = load_workbook(new_filename)
     for i in range(len(data_info[2])):
+        print(len(data_info[2]))
         # Prcd 6: Old/New DF 를 병합 후 중복을 제거하여 변경된 아이템 추출 과정
         df_conc = pd.concat([data_info[0][i], data_info[1][i]], ignore_index=True)
         df_drop_du = df_conc.drop_duplicates(df_conc.columns[1:-1], keep='last')
@@ -202,22 +204,27 @@ def df_compare():
 
         df_changes_new = df_changes[df_changes['RevCon'] == 2].iloc[:, :-1]
         df_changes_new.sort_values(by='Full Tag', inplace=True)
+        print('#'*300)
+        print(df_changes_new)
 
         # Prcd 6-3 : Tag No 를 기준으로 변경된 DF 선별 후, 변경된 tag no 로 수정한 아이템을 기존 tag no 로 수정함
         for m in range(len(list_changed_tag[1])):
             for n in range(len(list_changed_tag[1][m])):
-                for j, k in zip(list_changed_tag[0][m][n], list_changed_tag[1][m][n]):
+                for j, k in zip([list_changed_tag[0][m][n]], [list_changed_tag[1][m][n]]):
                     df_changes_old.loc[df_changes_old['Full Tag'] == j, 'Full Tag'] = k
-                    print('curr_tag ::::', list_changed_tag[0][m][n])
-                    print('prev_tag ::::', list_changed_tag[1][m][n])
 
         for j in range(len(df_changes_new.index)):
+
             for k in range(len(df_changes_new.columns) - 2):
                 if df_changes_new.iat[j, k] != df_changes_old.iat[j, k]:
+                    print('JJJJKKKKKK :::::::', j ,k, 'Value ~~~~~', df_changes_new.iat[j, k], df_changes_old.iat[j, k])
                     for m in range(len(proc_data)):
+                        print('m number~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~', len(proc_data))
                         for tag in proc_data[m]:
-                            if tag == df_changes_new.iat[j, len(df_changes_new.columns) - 2]:
+                            print('tag index **********************', tag)
+                            if tag == df_changes_new.iat[j, len(df_changes_new.columns) - 3]:
                                 row_no = proc_data[m].index(tag) + 2
+                                print('ROW NUMBER ###############', row_no)
 
                                 wb[data_info[2][i]].cell(row=row_no, column=k + 1).fill = PatternFill(fill_type='solid', fgColor="ffff00")
 
@@ -226,25 +233,27 @@ def df_compare():
                                         df_changes_old.iat[j, k]) + " => " + str(
                                         df_changes_new.iat[j, k])
                                 # break
-    # wb.save(comp_filename)
 
+        for i in range(len(proc_data)):
+            for tag in proc_data[i]:
+                for add_name in item_count[2]:
+                    if add_name == tag:
+                        j = proc_data[i].index(tag)
+                        for k in range(len(df_changes_new.columns) - 3):
+                            wb[data_info[2][i]].cell(row=j + 2, column=k + 1).fill = PatternFill(fill_type='solid',
+                                                                                         fgColor="ffff00")
+        for i in range(len(proc_data)):
+            for tag in proc_data[i]:
+                for del_name in item_count[1]:
+                    if del_name == tag:
+                        j = proc_data[i].index(tag)
 
-        # for tag in tag_index:
-        #     for add_name in tag_change[4]:
-        #         if add_name == tag:
-        #             j = tag_index.index(tag)
-        #             for k in range(len(df_changes_new.columns) - 2):
-        #                 wb[data_info[2][i]].cell(row=j + 2, column=k + 1).fill = PatternFill(fill_type='solid',
-        #                                                                              fgColor="ffff00")
-        #
-        #     for del_name in tag_change[1]:
-        #         if del_name == tag:
-        #             j = tag_index.index(tag)
-        #
-        #             for k in range(len(df_changes_new.columns) - 2):
-        #                 wb[data_info[2][i]].cell(row=j + 2, column=k + 1).fill = PatternFill(fill_type='solid',
-        #                                                                              fgColor="ffff00")
-        #                 wb[data_info[2][i]].cell(row=j + 2, column=k + 1).font = Font(strike=True)
+                        for k in range(len(df_changes_new.columns) - 3):
+                            wb[data_info[2][i]].cell(row=j + 2, column=k + 1).fill = PatternFill(fill_type='solid',
+                                                                                         fgColor="ffff00")
+                            wb[data_info[2][i]].cell(row=j + 2, column=k + 1).font = Font(strike=True)
+
+    wb.save(comp_filename)
 
 
 
@@ -254,19 +263,3 @@ df_compare()
 
 
 
-a = [[], [], ['TT-3101C-'], [], ['LT-3501C-'], ['FT-3111C-', 'FT-3111D-']]
-b = [[], [], ['TT-3101B-'], [], ['LT-3510B-'], ['FT-3111A-', 'FT-3111B-']]
-
-for m in range(len(a)):
-    print('m1 ::::::', m)
-    for n in range(len(a[m])):
-        print('m2 ::::::', m)
-        print('n ::::::::::::::', n)
-        for j, k in zip(a[m][n], b[m][n]):
-            # df_changes_old.loc[df_changes_old['Full Tag'] == j, 'Full Tag'] = k
-            print('m2 #############', m)
-            print('n #############', n)
-            print('JJJJ :::::::::::', j)
-            print('KKKK :::::::::::', k)
-            print('curr_tag ::::', a[m][n])
-            print('prev_tag ::::', b[m][n])
