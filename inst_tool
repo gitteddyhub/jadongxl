@@ -1,0 +1,272 @@
+"""
+엑셀 파일에 표스타일이 있을 경우, 저장 시 에러가 생김.
+엑셀 파일의 데이타를 추출해 별도의 엑셀파일로 저장하는 것도 좋은 방법이지만,
+그럴경우 변경된 값 혹은 색상이 있는 파일의 경우, 색상을 불러오기도 힘들고, 누적처리가 까다로움
+
+공정으로부터 표스타일이 없는 엑셀 파일을 요청해야함.
+
+Tag No 변경 아이템의 처리는  A/B -> B/A, B/A -> A/B 의 경우에 Tag No 변경이 아니라, 그 외의 값이 변경된 것으로 처리됨
+
+시트 이름과 열목록은 기본 포맷과 일치해야한다.
+
+Tag No 가 변경된 아이템 중 old tag name 이 잘 못 기재되는 경우, 해당 아이템은 추가 아이템으로 인식된다.
+
+삭제된 아이템이 이전과 변경이 없을 경우 색상 및 삭선은 표현되지 않음
+"""
+
+
+import pandas as pd
+import numpy as np
+
+from openpyxl import load_workbook
+from openpyxl.styles import PatternFill, Font
+# from openpyxl.styles.fonts import Font
+
+import time
+import sys
+
+start1 = time.time()
+
+# Prcd 1 : Process Data 불러오기
+old_filename = 'AE_Sam1.xlsx'
+new_filename = 'AE_Sam2.xlsx'
+
+
+def compared_filename(newfilename):
+    dot_no = newfilename.find('.')
+    date = time.strftime('%Y%m%d', time.localtime(time.time()))
+    compfn = newfilename[:dot_no] + '_comp_' + date + newfilename[dot_no:]
+    return compfn
+
+
+comp_filename = compared_filename(new_filename)
+
+exist = 'Logically deleted from the project'
+tag_no = 'Name'
+old_tag_no = 'Old Tag Name'
+
+PD_sh_name = ['Flow', 'Level', 'Press', 'Temp', 'CV', 'On-Off', 'PSV', 'Misc']
+
+relevant_sheets = ['Flow', 'Level', 'Press', 'Temp', 'CV', 'On-Off', 'PSV', 'Misc']
+
+display_change_info = True
+
+# TODO : 빈페이지 일 경우 pass 하는 함수 추가
+def get_data_info(old_excel_path, new_excel_path):
+    old_xls = pd.ExcelFile(old_excel_path)
+    new_xls = pd.ExcelFile(new_excel_path)
+
+    old_available_sheets = set(old_xls.sheet_names)
+    new_available_sheets = set(new_xls.sheet_names)
+
+    relevant_sheets_set = set(relevant_sheets)
+
+    old_filtered_sheets_set = old_available_sheets.intersection(relevant_sheets_set)
+    new_filtered_sheets_set = new_available_sheets.intersection(relevant_sheets_set)
+
+    compare_filtered_sheets = list(old_filtered_sheets_set.intersection(new_filtered_sheets_set))
+
+    # Get dataframe of filtered sheets
+    old_df_list = [pd.read_excel(old_xls, sheet_name=sheet, dtype='object') for sheet in compare_filtered_sheets]
+    new_df_list = [pd.read_excel(new_xls, sheet_name=sheet, dtype='object') for sheet in compare_filtered_sheets]
+
+    return old_df_list, new_df_list, compare_filtered_sheets
+
+
+data_info = get_data_info(old_filename, new_filename)
+
+
+# Tag 기준으로 비교하므로, tag no 전처리 및 중복 tag 확인
+def data_preprocess(*two_data):
+    tag_index = []
+    turn = 0
+    for data in two_data:
+        turn += 1
+        for i in range(len(data)):
+            data[i] = data[i].fillna('-')
+            data[i]['Full Tag'] = data[i][tag_no] + data[i]['Case']
+            data[i]['Old Full Tag'] = data[i][old_tag_no] + data[i]['Case']
+            data[i]['Tag Check'] = data[i]['Full Tag'] + data[i]['Old Full Tag']
+
+            if turn == 2:
+                tag_index.append(data[i]['Full Tag'].tolist())
+
+            # old, new dataframe 을 합칠 예정이므로 구분을 위한 열 추가
+            data[i]['RevCon'] = turn
+            # Tag No 중복 여부 확인 (unique 한 값이 몇개인지 알려줌)
+            duplicate_count = len(data[i].index) - data[i]['Full Tag'].nunique()
+            if duplicate_count >= 1:
+                li_duplicate = set(data[i].loc[data[i].duplicated(['Full Tag']), 'Full Tag'])
+                print(' %d 번째 Data 의 중복 Tag No 는 다음과 같습니다.' % turn, li_duplicate)
+                sys.exit()
+    return tag_index
+
+
+proc_data = data_preprocess(data_info[0], data_info[1])
+
+
+def changed_tag_apply():
+    list_curr_tag = []
+    list_prev_tag = []
+
+    for i in range(len(data_info[0])):
+        # ctn : Changed Tag No
+
+        df_old_ctn = data_info[0][i].copy()
+        df_new_ctn = data_info[1][i].copy()
+
+        df_old_ctn = df_old_ctn[df_old_ctn[old_tag_no].str.len() > 3]
+        df_new_ctn = df_new_ctn[df_new_ctn[old_tag_no].str.len() > 3]
+
+        # old tag name 이 있는 아이템 중 old version 과 new version 의 old tag name 과 name 이 동일한 것은 tag 변경 아이템에서 제외
+        unchanged_tag_set = set(df_old_ctn['Tag Check']).intersection(df_new_ctn['Tag Check'])
+
+        # df_old_ctn = df_old_ctn.loc[~df_old_ctn['Tag Check'].isin(unchanged_tag_set)]
+        df_new_ctn = df_new_ctn.loc[~df_new_ctn['Tag Check'].isin(unchanged_tag_set)]
+
+        list_curr_tag.append(df_new_ctn['Full Tag'].tolist())
+        listlist1 = df_new_ctn['Full Tag'].tolist()
+        print('list current tag no :::::::::::::::::::::::::::::', listlist1)
+        list_prev_tag.append(df_new_ctn['Old Full Tag'].tolist())
+        listlist2 = df_new_ctn['Old Full Tag'].tolist()
+        print('list previous tag no :::::::::::::::::::::::::::::', listlist2)
+
+        for j, k in zip(df_new_ctn['Old Full Tag'], df_new_ctn['Full Tag']):
+            data_info[0][i].loc[data_info[0][i]['Full Tag'] == j, 'Full Tag'] = k
+
+
+
+    return list_curr_tag, list_prev_tag
+
+
+list_changed_tag = changed_tag_apply()
+print(list_changed_tag[0])
+print(list_changed_tag[1])
+
+def add_del_item_check():
+
+    for i in range(len(data_info[2])):
+
+        set_del_tag = set(data_info[0][i]['Full Tag']) - set(data_info[1][i]['Full Tag'])
+        set_add_tag = set(data_info[1][i]['Full Tag']) - set(data_info[0][i]['Full Tag'])
+
+        df_del_tag = data_info[0][i][data_info[0][i]['Full Tag'].isin(set_del_tag)].iloc[:, :-1]
+        df_add_tag = data_info[1][i][data_info[1][i]['Full Tag'].isin(set_add_tag)].iloc[:, :-1]
+
+        # exist = 'Logically deleted from the project' 에서 true 인 tag 선별
+        df_logic_del_old = data_info[0][i][data_info[0][i][exist].str.contains('TRUE', case=False)].iloc[:, :-1]
+        df_logic_del_new = data_info[1][i][data_info[1][i][exist].str.contains('TRUE', case=False)].iloc[:, :-1]
+        set_logic_del_tag = set(df_logic_del_new['Full Tag']) - set(df_logic_del_old['Full Tag'])  # Deleted 열에 삭제 표기 기준으로 New 에 삭제된 아이템
+
+        df_logic_del = data_info[1][i][data_info[1][i]['Full Tag'].isin(set_logic_del_tag)].iloc[:, :-1]
+
+        # Prcd 5-5 : Tag No 유무로 확인한 삭제 아이템과 Deleted 열의 표시로 확인한 삭제 아이템을 취합
+        df_del_total = pd.concat([df_del_tag, df_logic_del], ignore_index=True)
+        set_del_total = set(df_del_total['Full Tag'])
+
+        # Prcd 5-6 : 비교할 DF 에서 exist 열에 삭제 표기가 된 아이템 제외
+        # TODO : 삭제 아이템중 변경 사항 시 변경된 아이템에 포함됨 (삭선처리 안됨)
+        # 합집합 후 왼쪽의 DF 만 남김
+        # dfPD_old, dfPD_new 에서 del item 삭제 (차집합)
+        # index no 가 다른 DF 끼리 차집합시에는 Future Warning 이 뜨는 것 같음.
+        # FutureWarning: In a future version, the Index constructor will not infer numeric dtypes
+        # when passed object-dtype sequences (matching Series behavior).
+
+        # TODO : 삭제 아이템 제외 시 df_del_total 을 적용해야하는 것이 아닌지 확인 요함 (중요!!) - 완료
+        # TODO : 삭제 아이템 제외관련 schematic 재정립 필요
+        data_info[0][i] = pd.merge(data_info[0][i], df_logic_del_old, how='outer', indicator=True).query(
+            '_merge == "left_only"').drop(columns=['_merge'])
+        data_info[1][i] = pd.merge(data_info[1][i], df_del_total, how='outer', indicator=True).query(
+            '_merge == "left_only"').drop(columns=['_merge'])
+
+    return df_del_total, set_del_total, set_add_tag
+
+
+item_count = add_del_item_check()
+
+
+def df_compare():
+    wb = load_workbook(new_filename)
+    for i in range(len(data_info[2])):
+        # Prcd 6: Old/New DF 를 병합 후 중복을 제거하여 변경된 아이템 추출 과정
+        df_conc = pd.concat([data_info[0][i], data_info[1][i]], ignore_index=True)
+        df_drop_du = df_conc.drop_duplicates(df_conc.columns[1:-1], keep='last')
+
+        # Prcd 6-1 : 중복 제거 후 Tag No 가 중복되어있는 아이템(변경된 아이템) 을 취합 (중복이 아닌 아이템은 추가/삭제 아이템)
+        df_changes = df_drop_du[df_drop_du.duplicated('Name', keep=False)]
+
+        # Prcd 6-2 : 변경된 아이템(중복 삭제 후에도 tag 가 중복된 아이템)을 Old/New 로 분리
+        # 맨 뒤의 iloc 은 맨끝이나 맨 앞쪽부터 비교시 분리해야할 컬럼을 위해 사용함. 전체를 나타내도 무방할 경우 삭제.
+        df_changes_old = df_changes[df_changes['RevCon'] == 1].iloc[:, :-1]
+        df_changes_old.sort_values(by='Full Tag', inplace=True)
+
+        df_changes_new = df_changes[df_changes['RevCon'] == 2].iloc[:, :-1]
+        df_changes_new.sort_values(by='Full Tag', inplace=True)
+
+        # Prcd 6-3 : Tag No 를 기준으로 변경된 DF 선별 후, 변경된 tag no 로 수정한 아이템을 기존 tag no 로 수정함
+        for m in range(len(list_changed_tag[1])):
+            for n in range(len(list_changed_tag[1][m])):
+                for j, k in zip(list_changed_tag[0][m][n], list_changed_tag[1][m][n]):
+                    df_changes_old.loc[df_changes_old['Full Tag'] == j, 'Full Tag'] = k
+                    print('curr_tag ::::', list_changed_tag[0][m][n])
+                    print('prev_tag ::::', list_changed_tag[1][m][n])
+
+        for j in range(len(df_changes_new.index)):
+            for k in range(len(df_changes_new.columns) - 2):
+                if df_changes_new.iat[j, k] != df_changes_old.iat[j, k]:
+                    for m in range(len(proc_data)):
+                        for tag in proc_data[m]:
+                            if tag == df_changes_new.iat[j, len(df_changes_new.columns) - 2]:
+                                row_no = proc_data[m].index(tag) + 2
+
+                                wb[data_info[2][i]].cell(row=row_no, column=k + 1).fill = PatternFill(fill_type='solid', fgColor="ffff00")
+
+                                if display_change_info:
+                                    wb[data_info[2][i]].cell(row=row_no, column=k + 1).value = str(
+                                        df_changes_old.iat[j, k]) + " => " + str(
+                                        df_changes_new.iat[j, k])
+                                # break
+    # wb.save(comp_filename)
+
+
+        # for tag in tag_index:
+        #     for add_name in tag_change[4]:
+        #         if add_name == tag:
+        #             j = tag_index.index(tag)
+        #             for k in range(len(df_changes_new.columns) - 2):
+        #                 wb[data_info[2][i]].cell(row=j + 2, column=k + 1).fill = PatternFill(fill_type='solid',
+        #                                                                              fgColor="ffff00")
+        #
+        #     for del_name in tag_change[1]:
+        #         if del_name == tag:
+        #             j = tag_index.index(tag)
+        #
+        #             for k in range(len(df_changes_new.columns) - 2):
+        #                 wb[data_info[2][i]].cell(row=j + 2, column=k + 1).fill = PatternFill(fill_type='solid',
+        #                                                                              fgColor="ffff00")
+        #                 wb[data_info[2][i]].cell(row=j + 2, column=k + 1).font = Font(strike=True)
+
+
+
+
+df_compare()
+
+
+
+
+a = [[], [], ['TT-3101C-'], [], ['LT-3501C-'], ['FT-3111C-', 'FT-3111D-']]
+b = [[], [], ['TT-3101B-'], [], ['LT-3510B-'], ['FT-3111A-', 'FT-3111B-']]
+
+for m in range(len(a)):
+    print('m1 ::::::', m)
+    for n in range(len(a[m])):
+        print('m2 ::::::', m)
+        print('n ::::::::::::::', n)
+        for j, k in zip(a[m][n], b[m][n]):
+            # df_changes_old.loc[df_changes_old['Full Tag'] == j, 'Full Tag'] = k
+            print('m2 #############', m)
+            print('n #############', n)
+            print('JJJJ :::::::::::', j)
+            print('KKKK :::::::::::', k)
+            print('curr_tag ::::', a[m][n])
+            print('prev_tag ::::', b[m][n])
