@@ -20,12 +20,14 @@ import numpy as np
 from openpyxl import load_workbook
 from openpyxl.styles import PatternFill, Font
 # from openpyxl.styles.fonts import Font
+from openpyxl.utils.dataframe import dataframe_to_rows
 
 import time
 import sys
 
 exist = 'Logically deleted from the project'
 tag_no = 'Name'
+cases = 'Case'
 old_tag_no = 'Old Tag Name'
 
 relevant_sheets = ['Flow', 'Level', 'Press', 'Temp', 'CV', 'On-Off', 'PSV', 'Misc']
@@ -33,11 +35,19 @@ relevant_sheets = ['Flow', 'Level', 'Press', 'Temp', 'CV', 'On-Off', 'PSV', 'Mis
 display_change_info = True
 dell_logic = True
 
-start1 = time.time()
+# 시트 하나만 비교하고, 파일간 시트이름이 다를 경우
+one_sheet_compare = False
+old_one_sheet_name = 'Flow'
+new_one_sheet_name = 'Flow'
 
-# Prcd 1 : Process Data 불러오기
+produce_report = False
+
+
 old_file = 'AE_Sam1.xlsx'
 new_file = 'AE_Sam2.xlsx'
+
+# TODO : Old Tag Name 열 혹은 Case 열 이 없는 경우
+# TODO : Report 작성
 
 
 def create_save_filename(file_to_save):  # 저장되는 파일의 이름 설정
@@ -52,45 +62,67 @@ def get_xls_info(old_excel_path, new_excel_path):
     old_xl = pd.ExcelFile(old_excel_path)
     new_xl = pd.ExcelFile(new_excel_path)
 
-    # 불러온 엑셀의 시트이름을 집합으로 표기. (기존에는 pd.read_excel 로 불러와 df.key() 로 sheet 이름을 확인했음.)
-    old_available_sheets = set(old_xl.sheet_names)
-    new_available_sheets = set(new_xl.sheet_names)
+    if one_sheet_compare:
+        sheet_name = new_one_sheet_name
+        compare_sheets_list = [sheet_name]
+    else:
+        # 불러온 엑셀의 시트이름을 집합으로 표기. (기존에는 pd.read_excel 로 불러와 df.key() 로 sheet 이름을 확인했음.)
+        old_available_sheets = set(old_xl.sheet_names)
+        new_available_sheets = set(new_xl.sheet_names)
 
-    relevant_sheets_set = set(relevant_sheets)
+        relevant_sheets_set = set(relevant_sheets)
 
-    # 두 엑셀 시트 이름과 표본 시트 이름의 교집합 구하고, 그 교집합들을 다시 교집합으로 구하면, 비교해야할 시트명이 결정됨.
-    old_filtered_sheets_set = old_available_sheets.intersection(relevant_sheets_set)
-    new_filtered_sheets_set = new_available_sheets.intersection(relevant_sheets_set)
+        # 두 엑셀 시트 이름과 표본 시트 이름의 교집합 구하고, 그 교집합들을 다시 교집합으로 구하면, 비교해야할 시트명이 결정됨.
+        old_filtered_sheets_set = old_available_sheets.intersection(relevant_sheets_set)
+        new_filtered_sheets_set = new_available_sheets.intersection(relevant_sheets_set)
 
-    compare_sheets_list = list(old_filtered_sheets_set.intersection(new_filtered_sheets_set))
+        compare_sheets_list = list(old_filtered_sheets_set.intersection(new_filtered_sheets_set))
 
     return old_xl, new_xl, compare_sheets_list
 
 
 def get_df_info(xl1, xl2, sheets_list_to_compare):
-    # 비교할 시트명으로 비교할 data frame 을 리스트로 생성
-    old_dataframe_list = [xl1.parse(sheet, dtype='object') for sheet in sheets_list_to_compare]
-    new_dataframe_list = [xl2.parse(sheet, dtype='object') for sheet in sheets_list_to_compare]
+    if one_sheet_compare:
+        old_dataframe_list = [xl1.parse(old_one_sheet_name, dtype='object')]
+        new_dataframe_list = [xl2.parse(new_one_sheet_name, dtype='object')]
 
-    # 비교할 Sheet 수량 확인
-    compare_sheets_qty = len(sheets_list_to_compare)
-    # 각 df 의 열 개수 (해당 개수로 추가/삭제의 셀 서식 변경 시 활용)
-    column_qty_list = [len(df.columns) for df in new_dataframe_list]
+        compare_sheets_qty = 1
+        column_qty_list = [len(new_dataframe_list[0].columns)]
+    else:
+        # 비교할 시트명으로 비교할 data frame 을 리스트로 생성
+        old_dataframe_list = [xl1.parse(sheet, dtype='object') for sheet in sheets_list_to_compare]
+        new_dataframe_list = [xl2.parse(sheet, dtype='object') for sheet in sheets_list_to_compare]
+
+        # 비교할 Sheet 수량 확인
+        compare_sheets_qty = len(sheets_list_to_compare)
+        # 각 df 의 열 개수 (해당 개수로 추가/삭제의 셀 서식 변경 시 활용)
+        column_qty_list = [len(df.columns) for df in new_dataframe_list]
 
     return old_dataframe_list, new_dataframe_list, compare_sheets_qty, column_qty_list
 
 
-def tag_no_preprocess(*two_data):
+def df_preprocess(*two_data):
     # 추후 변경된 tag no 와 비교할 기준인 full tag index 를 작성
+    # TODO : Case 혹은 Old Tag No 열이 없는 Dataframe 에서 시트별 유무로 인해 추후 이 열을 삭제하기 쉽지 않음.
     full_tag_idx_list = []
     turn = 0
     for data in two_data:
         turn += 1
         for i in range(sheets_qty):
             data[i] = data[i].fillna('-')
+            # dataframe 에 case 와 old tag no 열이 없는 경우 해당 열을 생성
+            if cases not in data[i].columns:
+                data[i][cases] = '-'
+
+            if old_tag_no not in data[i].columns:
+                data[i][old_tag_no] = '-'
+
+            # Item 비교 기준인 tag no 를 tag check 열로 통합
             data[i]['Full Tag'] = data[i][tag_no] + data[i]['Case']
             data[i]['Old Full Tag'] = data[i][old_tag_no] + data[i]['Case']
             data[i]['Tag Check'] = data[i]['Full Tag'] + data[i]['Old Full Tag']
+
+            # bool 일 수도 있는 열은 문자로 변경 (bool 일 경우 TRUE 대문자가 True 로 변경됨)
             data[i][exist] = data[i][exist].astype(str)
             data[i][exist] = data[i][exist].str.upper()
 
@@ -105,6 +137,7 @@ def tag_no_preprocess(*two_data):
                 li_duplicate = set(data[i].loc[data[i].duplicated(['Full Tag']), 'Full Tag'])
                 print(' %d 번째 Data 의 중복 Tag No 는 다음과 같습니다.' % turn, li_duplicate)
                 sys.exit()
+
     return full_tag_idx_list
 
 
@@ -135,28 +168,35 @@ def changed_tag_apply():
     return list_curr_tag, list_prev_tag
 
 
-def get_add_del_tag():  # TODO : add 와 del 을 따로 분리
+def get_add_tag():
     list_add = []
-    list_del_total = []
-
     for i in range(sheets_qty):
         # 두 df 의 차집합으로 추가된 tag list 생성
         set_add = set(new_df_list[i]['Full Tag']) - set(old_df_list[i]['Full Tag'])
         list_add.append(list(set_add))
 
-        # 두 df 의 차집합으로 삭제된 tag 집합 생성
+    return list_add, set_add
+
+
+def get_del_tag():
+    list_del = []
+    for i in range(sheets_qty):
+        # 두 df 의 차집합으로 삭제된 tag 집합 생성 (new 에는 해당 tag 가 없으므로 표현 불가하며, 새로운 시트에 표기해야함)
         set_del = set(old_df_list[i]['Full Tag']) - set(new_df_list[i]['Full Tag'])
 
-        # tag 삭제를 표시하는 열이 있다면 해당 열을 사용하여 삭제된 tag 집합 생성
-        logic_del_old = set(old_df_list[i][old_df_list[i][exist].str.contains('TRUE', case=False)]['Full Tag'])
-        logic_del_new = set(new_df_list[i][new_df_list[i][exist].str.contains('TRUE', case=False)]['Full Tag'])
+        if dell_logic:
+            # tag 삭제를 표시하는 열이 있다면 해당 열을 사용하여 삭제된 tag 집합 생성
+            logic_del_old = set(old_df_list[i][old_df_list[i][exist].str.contains('TRUE', case=False)]['Full Tag'])
+            logic_del_new = set(new_df_list[i][new_df_list[i][exist].str.contains('TRUE', case=False)]['Full Tag'])
 
-        # 두 df 의 차집합과 삭제 표시 열로 확인된 tag 를 집합으로 생성 후 list 로 변환
-        set_logic_del = logic_del_new - logic_del_old
-        set_del_total = set_del.union(set_logic_del)
-        list_del_total.append(list(set_del_total))
+            # 두 df 의 차집합과 삭제 표시 열로 확인된 tag 를 집합으로 생성 후 list 로 변환
+            set_logic_del = logic_del_new - logic_del_old
+            set_del_total = set_del.union(set_logic_del)
+            list_del.append(list(set_del_total))
+        else:
+            list_del.append(list(set_del))
 
-    return list_add, list_del_total
+    return list_del
 
 
 def df_compare():
@@ -198,6 +238,7 @@ def get_coordination(revised_old_df, revised_new_df):
                     row_no = std_idx_list[i].index(tag) + 2
                     col_no = k + 1
                     coordination_list.append([row_no, col_no])
+
                     # data 의 변경 사항을 이전 값과 비교해서 보기를 원할 경우 '이전값 => 변경값' 으로 표기
                     if display_change_info:
                         wb[sheets_list[i]].cell(row=row_no, column=col_no).value = str(
@@ -218,10 +259,10 @@ def coloring_xls(workbook, coord):
 
 def add_item_process(workbook):
     for i in range(sheets_qty):
-        # 기준이 되는 리스트를 인덱스로 만들어줌. (리스트 값과 순서를 쌍으로 만듦)
+        # 기준이 되는 리스트를 dictionary 로 만들어줌
         tag_map = {tag: idx for idx, tag in enumerate(std_idx_list[i])}
         # 리스트에 아이템이 만약 tag_map 에 있다면 그 위치를 반환
-        add_position = [tag_map[item] for item in add_del_tag[0][i] if item in tag_map]
+        add_position = [tag_map[item] for item in list_add_tag[i] if item in tag_map]
         for j in add_position:
             for k in range(col_qty_list[i]):
                 cell = workbook[sheets_list[i]].cell(row=j + 2, column=k + 1)
@@ -230,8 +271,10 @@ def add_item_process(workbook):
 
 def del_item_process(workbook):
     for i in range(sheets_qty):
+        # 기준이 되는 리스트를 dictionary 로 만들어줌
         tag_map = {tag: idx for idx, tag in enumerate(std_idx_list[i])}
-        del_position = [tag_map[item] for item in add_del_tag[1][i] if item in tag_map]
+        # 리스트에 아이템이 만약 tag_map 에 있다면 그 위치를 반환
+        del_position = [tag_map[item] for item in del_tag[i] if item in tag_map]
         for j in del_position:
             for k in range(col_qty_list[i]):
                 cell = workbook[sheets_list[i]].cell(row=j + 2, column=k + 1)
@@ -239,8 +282,55 @@ def del_item_process(workbook):
                 cell.font = font
 
 
-# 함수 실행
+def make_report_preprocessing(list1, list2):
+    # 변경된 dataframe 을 하나로 병합
+    old_combine_dataframe = pd.concat(list1, ignore_index=True)
+    old_combine_dataframe = old_combine_dataframe.fillna('-')
+    new_combine_dataframe = pd.concat(list2, ignore_index=True)
+    new_combine_dataframe = new_combine_dataframe.fillna('-')
 
+    combine_full_tag_list = new_combine_dataframe['Full Tag'].tolist()
+
+    return old_combine_dataframe, new_combine_dataframe, combine_full_tag_list
+
+
+def make_change_report(old_df, new_df):
+
+    # 마지막 3열을 제외
+    write_new_combine_df = new_df.iloc[:, :-3]
+
+    # report 를 작성할 시트 생성
+    ws = wb.create_sheet(title='COMPARE')
+
+    # dataframe 을 한 줄씩 생성한 시트에 기입함
+    for r_idx, row in enumerate(dataframe_to_rows(write_new_combine_df, index=False, header=True), 1):
+        ws.append(row)
+
+    for j in range(len(new_df.index)):
+        for k in range(len(new_df.columns) - 3):
+            if new_df.iat[j, k] != old_df.iat[j, k]:
+                tag = new_df.iloc[j, new_df.columns.get_loc('Full Tag')]
+                row_no = combine_tag_list.index(tag) + 2
+                col_no = k + 1
+                cell = wb['COMPARE'].cell(row=row_no, column=col_no)
+                cell.fill = fill
+
+                # data 의 변경 사항을 이전 값과 비교해서 보기를 원할 경우 '이전값 => 변경값' 으로 표기
+                if display_change_info:
+                    wb['COMPARE'].cell(row=row_no, column=col_no).value = str(
+                        old_combine_df.iat[j, k]) + " => " + str(
+                        new_combine_df.iat[j, k])
+
+
+def make_add_report(new_df):
+    write_add_combine_df = new_df[new_df[tag_no].isin(set_add_tag)]
+
+
+
+
+
+
+# 함수 실행
 
 fill = PatternFill(fill_type='solid', fgColor="ffff00")
 font = Font(strike=True)
@@ -251,9 +341,13 @@ old_xls, new_xls, sheets_list = get_xls_info(old_file, new_file)
 old_df_list, new_df_list, sheets_qty, col_qty_list = get_df_info(old_xls, new_xls, sheets_list)
 
 # full_tag_index 가 결과 값이며, 추후 변경 사항이 있는 tag no 와 비교하는 기준 tag index 임
-std_idx_list = tag_no_preprocess(old_df_list, new_df_list)
+std_idx_list = df_preprocess(old_df_list, new_df_list)
 list_changed_tag = changed_tag_apply()
-add_del_tag = get_add_del_tag()
+
+list_add_tag, set_add_tag = get_add_tag()
+del_tag = get_del_tag()
+
+
 df_change = df_compare()
 wb = load_workbook_wrapper(new_file)
 
@@ -262,4 +356,10 @@ coordination = get_coordination(df_change[0], df_change[1])
 coloring_xls(wb, coordination)
 add_item_process(wb)
 del_item_process(wb)
+
+if produce_report:
+    old_combine_df, new_combine_df, combine_tag_list = make_report_preprocessing(old_df_list, new_df_list)
+
+
+
 wb.save(save_filename)
