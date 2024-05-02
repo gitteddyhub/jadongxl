@@ -43,7 +43,6 @@ new_one_sheet_name = 'Flow'
 
 produce_report = True
 
-
 old_file = 'AE_Sam1.xlsx'
 new_file = 'AE_Sam2.xlsx'
 
@@ -116,6 +115,7 @@ def df_preprocess(*two_data):
     turn = 0
     cnt_case = 0
     cnt_old_tag = 0
+    cnt_exist = 0
     for data in two_data:
         turn += 1
         for i in range(sheets_qty):
@@ -127,6 +127,10 @@ def df_preprocess(*two_data):
 
             if old_tag_no not in data[i].columns:
                 data[i][old_tag_no] = '-'
+                cnt_old_tag += 1
+
+            if exist not in data[i].columns:
+                data[i][exist] = False
                 cnt_old_tag += 1
 
             # Item 비교 기준인 tag no 를 tag check 열로 통합
@@ -154,6 +158,8 @@ def df_preprocess(*two_data):
         added_col.append(cases)
     if cnt_old_tag == sheets_qty:
         added_col.append(old_tag_no)
+    if exist == sheets_qty:
+        added_col.append(exist)
 
     return full_tag_idx_list, added_col
 
@@ -187,34 +193,44 @@ def changed_tag_apply():
 
 def get_add_tag():
     list_add = []
-    set_add = set()    # TODO 삭제
     for i in range(sheets_qty):
         # 두 df 의 차집합으로 추가된 tag list 생성
-        set_add = set(new_df_list[i]['Full Tag']) - set(old_df_list[i]['Full Tag'])
-        list_add.append(list(set_add))
+        old_tags = old_df_list[i]['Full Tag'].tolist()
+        print(old_tags)
+        print('* * ' * 50)
 
-    return list_add, set_add
+        new_tags = new_df_list[i]['Full Tag'].tolist()
+        print(new_tags)
+        print('* * ' * 50)
+        added_tags = [tag for tag in new_tags if tag not in old_tags]
+
+        print(added_tags)
+        list_add.append(added_tags)
+
+    return list_add
 
 
 def get_del_tag():
     list_del = []
+    old_set_del = set()
+    new_set_del = set()
+
     for i in range(sheets_qty):
         # 두 df 의 차집합으로 삭제된 tag 집합 생성 (new 에는 해당 tag 가 없으므로 표현 불가하며, 새로운 시트에 표기해야함)
-        set_del = set(old_df_list[i]['Full Tag']) - set(new_df_list[i]['Full Tag'])
+        make_del_set = set(old_df_list[i]['Full Tag']) - set(new_df_list[i]['Full Tag'])
+        old_set_del.update(make_del_set)
 
-        if dell_logic:
-            # tag 삭제를 표시하는 열이 있다면 해당 열을 사용하여 삭제된 tag 집합 생성
-            logic_del_old = set(old_df_list[i][old_df_list[i][exist].str.contains('TRUE', case=False)]['Full Tag'])
-            logic_del_new = set(new_df_list[i][new_df_list[i][exist].str.contains('TRUE', case=False)]['Full Tag'])
+        # tag 삭제를 표시하는 열이 있다면 해당 열을 사용하여 삭제된 tag 집합 생성
+        logic_del_old = set(old_df_list[i][old_df_list[i][exist].str.contains('TRUE', case=False)]['Full Tag'])
+        logic_del_new = set(new_df_list[i][new_df_list[i][exist].str.contains('TRUE', case=False)]['Full Tag'])
 
-            # 두 df 의 차집합과 삭제 표시 열로 확인된 tag 를 집합으로 생성 후 list 로 변환
-            set_logic_del = logic_del_new - logic_del_old
-            set_del_total = set_del.union(set_logic_del)
-            list_del.append(list(set_del_total))
-        else:
-            list_del.append(list(set_del))
+        # 두 df 의 차집합과 삭제 표시 열로 확인된 tag 를 집합으로 생성 후 list 로 변환
+        set_logic_del = logic_del_new - logic_del_old
+        new_set_del.update(set_logic_del)
+        set_del_total = make_del_set.union(set_logic_del)
+        list_del.append(list(set_del_total))
 
-    return list_del
+    return list_del, old_set_del, new_set_del
 
 
 def df_compare():
@@ -292,7 +308,7 @@ def del_item_process(workbook):
         # 기준이 되는 리스트를 dictionary 로 만들어줌
         tag_map = {tag: idx for idx, tag in enumerate(std_idx_list[i])}
         # 리스트에 아이템이 만약 tag_map 에 있다면 그 위치를 반환
-        del_position = [tag_map[item] for item in del_tag[i] if item in tag_map]
+        del_position = [tag_map[item] for item in list_del_tag[i] if item in tag_map]
         for j in del_position:
             for k in range(col_qty_list[i]):
                 cell = workbook[sheets_list[i]].cell(row=j + 2, column=k + 1)
@@ -300,42 +316,45 @@ def del_item_process(workbook):
                 cell.font = font
 
 
-def make_report_preprocessing(list1, list2):
+def prepro_add_del_report(arg_old_df_list, arg_new_df_list):
     # 변경된 dataframe 을 하나로 병합
-    old_combine_dataframe = pd.concat(list1, ignore_index=True)
+    old_combine_dataframe = pd.concat(arg_old_df_list, ignore_index=True)
     old_combine_dataframe = old_combine_dataframe.fillna('-')
-    new_combine_dataframe = pd.concat(list2, ignore_index=True)
+    new_combine_dataframe = pd.concat(arg_new_df_list, ignore_index=True)
     new_combine_dataframe = new_combine_dataframe.fillna('-')
 
-    combine_full_tag_list = new_combine_dataframe['Full Tag'].tolist()
+    combine_tag_list = new_combine_dataframe['Full Tag'].tolist()
 
-    return old_combine_dataframe, new_combine_dataframe, combine_full_tag_list
+    return old_combine_dataframe, new_combine_dataframe, combine_tag_list
 
 
-def make_change_report(old_chg_df_list, new_chg_df_list):
+def prepro_change_report(old_chg_df_list, new_chg_df_list):
 
     old_change_combine_df = pd.concat(old_chg_df_list, ignore_index=True)
     old_change_combine_df = old_change_combine_df.fillna('-')
-    print(old_change_combine_df)
-    
+
     new_change_combine_df = pd.concat(new_chg_df_list, ignore_index=True)
     new_change_combine_df = new_change_combine_df.fillna('-')
-    print(new_change_combine_df)
 
     change_combine_tag_list = new_change_combine_df['Full Tag'].tolist()
+
+    return old_change_combine_df, new_change_combine_df, change_combine_tag_list
+
+
+def make_change_report(old_df, new_df, tag_list):
 
     # report 를 작성할 시트 생성
     ws = wb.create_sheet(title='COMPARE')
 
     # dataframe 을 한 줄씩 생성한 시트에 기입함
-    for r_idx, row in enumerate(dataframe_to_rows(new_change_combine_df, index=False, header=True), 1):
+    for r_idx, row in enumerate(dataframe_to_rows(new_df, index=False, header=True), 1):
         ws.append(row)
 
-    for j in range(len(new_change_combine_df.index)):
-        for k in range(len(new_change_combine_df.columns)):
-            if new_change_combine_df.iat[j, k] != old_change_combine_df.iat[j, k]:
-                tag = new_change_combine_df.iloc[j, new_change_combine_df.columns.get_loc('Full Tag')]
-                row_no = change_combine_tag_list.index(tag) + 2
+    for j in range(len(new_df.index)):
+        for k in range(len(new_df.columns)):
+            if new_df.iat[j, k] != old_df.iat[j, k]:
+                tag = new_df.iloc[j, new_df.columns.get_loc('Full Tag')]
+                row_no = tag_list.index(tag) + 2
                 col_no = k + 1
                 cell = wb['COMPARE'].cell(row=row_no, column=col_no)
                 cell.fill = fill
@@ -343,8 +362,8 @@ def make_change_report(old_chg_df_list, new_chg_df_list):
                 # data 의 변경 사항을 이전 값과 비교해서 보기를 원할 경우 '이전값 => 변경값' 으로 표기
                 if display_change_info:
                     wb['COMPARE'].cell(row=row_no, column=col_no).value = str(
-                        old_change_combine_df.iat[j, k]) + " => " + str(
-                        new_change_combine_df.iat[j, k])
+                        old_df.iat[j, k]) + " => " + str(
+                        new_df.iat[j, k])
 
     col_idx_to_del = []
     for col in ws.iter_cols(1, ws.max_column, min_row=1, max_row=1):
@@ -357,13 +376,37 @@ def make_change_report(old_chg_df_list, new_chg_df_list):
         ws.delete_cols(index)
 
 
-
 def make_add_report(new_df):
-    write_add_combine_df = new_df[new_df[tag_no].isin(set_add_tag)]
+    write_add_combine_df = new_df[new_df['Full Tag'].isin(list_add_tag)]
+    print(new_df)
+    print('# # ' * 100)
+    print(list_add_tag)
+    ws = wb.create_sheet(title='ADDED')
+    for r_idx, row in enumerate(dataframe_to_rows(write_add_combine_df, index=False, header=True), 1):
+        ws.append(row)
+        if r_idx != 1:  # 헤더 제외
+            for cell in ws[r_idx]:
+                cell.fill = fill
 
 
+def make_dell_report(old_df, new_df):
+    write_old_del_combine_df = old_df[old_df[tag_no].isin(set_old_del_tag)]
+    write_new_del_combine_df = new_df[new_df[tag_no].isin(set_new_del_tag)]
+    ws = wb.create_sheet(title='DELETED')
 
+    for r_idx, row in enumerate(dataframe_to_rows(write_old_del_combine_df, index=False, header=True), 1):
+        ws.append(row)
+        if r_idx != 1:  # 헤더 제외
+            for cell in ws[r_idx]:
+                cell.fill = fill
+                cell.font = font
 
+    for r_idx, row in enumerate(dataframe_to_rows(write_new_del_combine_df, index=False, header=True), 1):
+        ws.append(row)
+        if r_idx != 1:  # 헤더 제외
+            for cell in ws[r_idx]:
+                cell.fill = fill
+                cell.font = font
 
 
 # 함수 실행
@@ -375,12 +418,13 @@ save_filename = create_save_filename(new_file)
 old_xls, new_xls, sheets_list = get_xls_info(old_file, new_file)
 
 old_df_list, new_df_list, sheets_qty, col_qty_list = get_df_info(old_xls, new_xls, sheets_list)
+
 # full_tag_index 가 결과 값이며, 추후 변경 사항이 있는 tag no 와 비교하는 기준 tag index 임
 std_idx_list, added_column = df_preprocess(old_df_list, new_df_list)
 list_changed_tag = changed_tag_apply()
 
-list_add_tag, set_add_tag = get_add_tag()
-del_tag = get_del_tag()
+list_add_tag = get_add_tag()
+list_del_tag, set_old_del_tag, set_new_del_tag = get_del_tag()
 
 
 df_change = df_compare()
@@ -393,9 +437,10 @@ add_item_process(wb)
 del_item_process(wb)
 
 if produce_report:
-    old_combine_df, new_combine_df, combine_tag_list = make_report_preprocessing(old_df_list, new_df_list)
-    make_change_report(df_change[0], df_change[1])
-
+    add_del_data = prepro_add_del_report(old_df_list, new_df_list)
+    change_data = prepro_change_report(df_change[0], df_change[1])
+    make_change_report(change_data[0], change_data[1], change_data[2])
+    make_add_report(add_del_data[1])
 
 
 wb.save(save_filename)
