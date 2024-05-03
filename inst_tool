@@ -21,7 +21,6 @@ from openpyxl import load_workbook
 from openpyxl.styles import PatternFill, Font
 # from openpyxl.styles.fonts import Font
 from openpyxl.utils.dataframe import dataframe_to_rows
-from openpyxl.utils import column_index_from_string
 
 import time
 import sys
@@ -131,7 +130,7 @@ def df_preprocess(*two_data):
 
             if exist not in data[i].columns:
                 data[i][exist] = False
-                cnt_old_tag += 1
+                cnt_exist += 1
 
             # Item 비교 기준인 tag no 를 tag check 열로 통합
             data[i]['Full Tag'] = data[i][tag_no] + data[i]['Case']
@@ -185,29 +184,31 @@ def changed_tag_apply():
         list_curr_tag.append(df_new_ctn['Full Tag'].tolist())
         list_prev_tag.append(df_new_ctn['Old Full Tag'].tolist())
 
+        print(old_df_list[i]['Full Tag'])
+
         for j, k in zip(df_new_ctn['Old Full Tag'], df_new_ctn['Full Tag']):
             old_df_list[i].loc[old_df_list[i]['Full Tag'] == j, 'Full Tag'] = k
+            print(j, k)
+
+        print(old_df_list[i]['Full Tag'])
 
     return list_curr_tag, list_prev_tag
 
 
 def get_add_tag():
     list_add = []
+    set_add = set()
     for i in range(sheets_qty):
         # 두 df 의 차집합으로 추가된 tag list 생성
         old_tags = old_df_list[i]['Full Tag'].tolist()
-        print(old_tags)
-        print('* * ' * 50)
-
         new_tags = new_df_list[i]['Full Tag'].tolist()
-        print(new_tags)
-        print('* * ' * 50)
         added_tags = [tag for tag in new_tags if tag not in old_tags]
-
-        print(added_tags)
         list_add.append(added_tags)
 
-    return list_add
+        set_add_full_tag = set(new_df_list[i]['Full Tag']) - set(old_df_list[i]['Full Tag'])
+        set_add = set_add.union(set_add_full_tag)
+
+    return list_add, set_add
 
 
 def get_del_tag():
@@ -316,7 +317,7 @@ def del_item_process(workbook):
                 cell.font = font
 
 
-def prepro_add_del_report(arg_old_df_list, arg_new_df_list):
+def preproc_add_del_report(arg_old_df_list, arg_new_df_list):
     # 변경된 dataframe 을 하나로 병합
     old_combine_dataframe = pd.concat(arg_old_df_list, ignore_index=True)
     old_combine_dataframe = old_combine_dataframe.fillna('-')
@@ -328,7 +329,7 @@ def prepro_add_del_report(arg_old_df_list, arg_new_df_list):
     return old_combine_dataframe, new_combine_dataframe, combine_tag_list
 
 
-def prepro_change_report(old_chg_df_list, new_chg_df_list):
+def preproc_change_report(old_chg_df_list, new_chg_df_list):
 
     old_change_combine_df = pd.concat(old_chg_df_list, ignore_index=True)
     old_change_combine_df = old_change_combine_df.fillna('-')
@@ -377,10 +378,9 @@ def make_change_report(old_df, new_df, tag_list):
 
 
 def make_add_report(new_df):
-    write_add_combine_df = new_df[new_df['Full Tag'].isin(list_add_tag)]
-    print(new_df)
-    print('# # ' * 100)
-    print(list_add_tag)
+    write_add_combine_df = new_df[new_df['Full Tag'].isin(set_add_tag)]
+    for i in added_column:
+        write_add_combine_df = write_add_combine_df.drop(i, axis=1)
     ws = wb.create_sheet(title='ADDED')
     for r_idx, row in enumerate(dataframe_to_rows(write_add_combine_df, index=False, header=True), 1):
         ws.append(row)
@@ -390,23 +390,27 @@ def make_add_report(new_df):
 
 
 def make_dell_report(old_df, new_df):
-    write_old_del_combine_df = old_df[old_df[tag_no].isin(set_old_del_tag)]
-    write_new_del_combine_df = new_df[new_df[tag_no].isin(set_new_del_tag)]
+    write_old_del_combine_df = old_df[old_df['Full Tag'].isin(set_old_del_tag)]
+    for i in added_column:
+        write_old_del_combine_df = write_old_del_combine_df.drop(i, axis=1)
+
+    write_new_del_combine_df = new_df[new_df['Full Tag'].isin(set_new_del_tag)]
+    for i in added_column:
+        write_new_del_combine_df = write_new_del_combine_df.drop(i, axis=1)
+
+    empty_row = pd.DataFrame({col: [np.nan] for col in write_old_del_combine_df}, index=[0])
+
+    all_del_df = pd.concat([write_old_del_combine_df, empty_row, write_new_del_combine_df], ignore_index=True)
+
     ws = wb.create_sheet(title='DELETED')
 
-    for r_idx, row in enumerate(dataframe_to_rows(write_old_del_combine_df, index=False, header=True), 1):
+    for r_idx, row in enumerate(dataframe_to_rows(all_del_df, index=False, header=True), 1):
         ws.append(row)
         if r_idx != 1:  # 헤더 제외
             for cell in ws[r_idx]:
                 cell.fill = fill
                 cell.font = font
 
-    for r_idx, row in enumerate(dataframe_to_rows(write_new_del_combine_df, index=False, header=True), 1):
-        ws.append(row)
-        if r_idx != 1:  # 헤더 제외
-            for cell in ws[r_idx]:
-                cell.fill = fill
-                cell.font = font
 
 
 # 함수 실행
@@ -423,7 +427,7 @@ old_df_list, new_df_list, sheets_qty, col_qty_list = get_df_info(old_xls, new_xl
 std_idx_list, added_column = df_preprocess(old_df_list, new_df_list)
 list_changed_tag = changed_tag_apply()
 
-list_add_tag = get_add_tag()
+list_add_tag, set_add_tag = get_add_tag()
 list_del_tag, set_old_del_tag, set_new_del_tag = get_del_tag()
 
 
@@ -437,10 +441,11 @@ add_item_process(wb)
 del_item_process(wb)
 
 if produce_report:
-    add_del_data = prepro_add_del_report(old_df_list, new_df_list)
-    change_data = prepro_change_report(df_change[0], df_change[1])
+    add_del_data = preproc_add_del_report(old_df_list, new_df_list)
+    change_data = preproc_change_report(df_change[0], df_change[1])
     make_change_report(change_data[0], change_data[1], change_data[2])
     make_add_report(add_del_data[1])
+    make_dell_report(add_del_data[0], add_del_data[1])
 
 
 wb.save(save_filename)
